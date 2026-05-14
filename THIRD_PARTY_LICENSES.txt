@@ -1,0 +1,7 @@
+Oracle Backend for Firebase Third-Party License Information
+--------------------------------------
+
+This product contains third-party code. Oracle is required to provide the notices for that code.
+The license manual for this release can be found at
+
+https://docs.oracle.com/en/database/oracle/backend-for-firebase/26.1/fusab/third-party-license-information-fusab.html

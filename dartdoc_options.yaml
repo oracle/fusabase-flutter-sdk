@@ -1,0 +1,34 @@
+dartdoc:
+  title: "Oracle® Backend for Firebase Flutter SDK Reference, Release 1.0"
+  header:
+    - 'doc/header.html'
+  footer:
+    - 'doc/footer.html'
+  categories:
+    auth:
+      markdown: doc/auth.md
+      displayName: Authentication
+    app-trust:
+      markdown: doc/app_trust.md
+      displayName: App Trust
+    core:
+      markdown: doc/core.md
+      displayName: Core
+    oracledb:
+      markdown: doc/oracledb.md
+      displayName: Database
+    fusabase-storage:
+      markdown: doc/storage.md
+      displayName: Storage
+  nodoc:
+    - 'lib/app_trust/internal/attestation_*.dart'
+    - 'lib/app_trust/internal/indexeddb_*.dart'
+    - 'lib/core/browser_*.dart'
+    - 'lib/auth/util/**'
+    - 'lib/client/socket/**'
+    - 'lib/globals.dart'
+    - 'lib/oracledb/utils/storage/**'
+    - 'lib/oracledb/utils/**'
+    - 'lib/storage/utils/**'
+  exclude:
+    - 'fusabase.globals'
