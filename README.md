@@ -1,6 +1,8 @@
 # Oracle® Backend for Firebase (Fusabase) Flutter SDK
 
-A Flutter SDK for Oracle Backend for Firebase (Fusabase) that provides authentication, document database, storage, App Trust, and vector search capabilities.
+A Flutter SDK for Oracle Backend for Firebase (Fusabase) that provides authentication, document database, storage, App Trust, and vector search capabilities, backed entirely by Oracle AI Database via ORDS. 
+
+This Oracle Backend for Firebase Flutter SDK follows the Firebase design, API patterns, and rules-based authorization model. Its SDK interfaces are designed to mirror the Firebase SDK interfaces so developers can move across backends with minimal changes. This Oracle Backend for Firebase Flutter SDK is a distinct Oracle offering.
 
 ## Prerequisites
 
