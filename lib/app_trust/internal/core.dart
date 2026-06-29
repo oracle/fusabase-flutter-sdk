@@ -102,6 +102,16 @@ String _buildAttestUrl(FusabaseApp app) {
   return '$base/_/baas-services/appcheck/${Uri.encodeComponent(projectId)}/attest?apiKey=${Uri.encodeComponent(apiKey)}';
 }
 
+String? _siteKeyForAttestationRequest(WebProvider provider) {
+  if (provider is HCaptchaProvider) {
+    return provider.siteKey;
+  }
+  if (provider is ReCaptchaEnterpriseProvider) {
+    return provider.siteKey;
+  }
+  return null;
+}
+
 int _defaultExpiryMillis() {
   return DateTime.now().millisecondsSinceEpoch +
       const Duration(minutes: 5).inMilliseconds;
@@ -212,7 +222,7 @@ class FusabaseAppTrust {
     return existing;
   }
 
-  /// Emits token changes similarly to Firebase App Check.
+  /// Emits token changes similarly to App Trust.
   Stream<String> get onTokenChange {
     if (!kIsWeb) {
       return const Stream<String>.empty();
@@ -313,22 +323,27 @@ class FusabaseAppTrust {
 
     state.inFlight =
         (() async {
-          const action = 'fusabase-attest';
+          const action = 'attest';
           final attestationToken = await provider.getAttestationToken(action);
+          final attestRequest = <String, dynamic>{
+            'provider': _providerKeyForWeb('web', app.options.appID),
+            'attestationToken': attestationToken,
+            'action': action,
+            'deviceInfo': {
+              'platform': app.options.appType.toLowerCase(),
+              'userAgent': attestation.getUserAgent(),
+            },
+          };
+          final siteKey = _siteKeyForAttestationRequest(provider);
+          if (siteKey != null && siteKey.isNotEmpty) {
+            attestRequest['siteKey'] = siteKey;
+          }
           final client = createClient(app);
           try {
             final response = await client.post(
               Uri.parse(_buildAttestUrl(app)),
               headers: {'content-type': 'application/json'},
-              body: jsonEncode({
-                'provider': _providerKeyForWeb('web', app.options.appID),
-                'attestationToken': attestationToken,
-                'action': action,
-                'deviceInfo': {
-                  'platform': app.options.appType.toLowerCase(),
-                  'userAgent': attestation.getUserAgent(),
-                },
-              }),
+              body: jsonEncode(attestRequest),
             );
 
             if (response.statusCode < 200 || response.statusCode > 299) {

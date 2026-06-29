@@ -91,52 +91,60 @@ class FusabaseAuth {
   /// ```dart
   /// final auth = FusabaseAuth(app: myApp);
   /// ```
-  FusabaseAuth({
-    required this.app,
-  })  : options = app.options,
-        __logLevel = app.logLevel,
-        config = getConfig(app),
-        _persistenceManager = PersistenceManager(name:"${app.options.appID}_AUTH_STORE"),
-        _authHelper =
-            app.config?.authType == 'base' || app.config?.authType == 'ldap'
-                ? ONPREMAuthHelper(
-                    options: app.options,
-                    config: getConfig(app),
-                    logLevel: app.logLevel)
-                // : (app.config?.authType == "base_s" ||
-                //         app.config?.authType == "ldap_s")
-                //     ? ONPREMSRPAuthHelper(
-                //         options: app.options,
-                //         config: getConfig(app),
-                //         logLevel: app.logLevel)
-                    : IDCSAuthHelper(
-                        options: app.options,
-                        config: getConfig(app),
-                        logLevel: app.logLevel) {
+  FusabaseAuth({required this.app})
+    : options = app.options,
+      __logLevel = app.logLevel,
+      config = getConfig(app),
+      _persistenceManager = PersistenceManager(
+        name: "${app.options.appID}_AUTH_STORE",
+      ),
+      _authHelper =
+          app.config?.authType == 'base' || app.config?.authType == 'ldap'
+              ? ONPREMAuthHelper(
+                options: app.options,
+                config: getConfig(app),
+                logLevel: app.logLevel,
+              )
+              // : (app.config?.authType == "base_s" ||
+              //         app.config?.authType == "ldap_s")
+              //     ? ONPREMSRPAuthHelper(
+              //         options: app.options,
+              //         config: getConfig(app),
+              //         logLevel: app.logLevel)
+              : IDCSAuthHelper(
+                options: app.options,
+                config: getConfig(app),
+                logLevel: app.logLevel,
+              ) {
     _authHelper._setApp(app);
+    _initFuture = __initialLogin();
+
     if (kIsWeb) {
       void handleMessage(dynamic data) {
         try {
           dynamic message = jsonDecode(data);
-          if (message["name"] =="${app.options.appID}localLogin") {
-            _handleLocalLogin(message["at"],message["rt"]);
-          } else if (message["name"]=="${app.options.appID}indexedDBLogin") {
-            _handleIndexedDBLogin(message["at"],message["rt"]);
-          } else if (message["name"]=="${app.options.appID}otherLogin") {
+          if (message["name"] == "${app.options.appID}localLogin") {
+            _handleLocalLogin(message["at"], message["rt"]);
+          } else if (message["name"] == "${app.options.appID}indexedDBLogin") {
+            _handleIndexedDBLogin(message["at"], message["rt"]);
+          } else if (message["name"] == "${app.options.appID}otherLogin") {
             _handleOtherLogin();
-          } else if (message["name"]=="${app.options.appID}localLogout") {
+          } else if (message["name"] == "${app.options.appID}localLogout") {
             _handleLogout();
           }
-        } catch (e) {
-        }
+        } catch (e) {}
       }
 
-      _persistenceManager.listener.onMessage.listen((dynamic event) {
-      handleMessage(event.data);
-    });
+      _initFuture
+          .whenComplete(() {
+            _persistenceManager.listener.onMessage.listen((dynamic event) {
+              handleMessage(event.data);
+            });
+          })
+          .catchError((_) {
+            // Startup errors are still surfaced through _initFuture awaiters.
+          });
     }
-
-    _initFuture  = __initialLogin();
   }
 
   /// Factory constructor to get an instance for a specific app.
@@ -164,9 +172,7 @@ class FusabaseAuth {
   /// var auth = FusabaseAuth.instance;
   /// ```
   static FusabaseAuth get instance {
-    return FusabaseAuth.instanceFor(
-      app: Fusabase.app(),
-    );
+    return FusabaseAuth.instanceFor(app: Fusabase.app());
   }
 
   /// Syncs login persistence across tabs or windows.
@@ -179,13 +185,26 @@ class FusabaseAuth {
   void _syncLoginPersistence(String at, String rt) {
     if (kIsWeb) {
       if (_persistenceManager.persistence.type == Persistence.LOCAL) {
-        _persistenceManager.makeEvent(jsonEncode({"name":"${app.options.appID}localLogin","at":at,
-        "rt":rt}));
-      } else if (_persistenceManager.persistence.type == Persistence.INDEXED_DB) {
-        _persistenceManager.makeEvent(jsonEncode({"name":"${app.options.appID}indexedDBLogin","at":at,
-                "rt":rt}));
+        _persistenceManager.makeEvent(
+          jsonEncode({
+            "name": "${app.options.appID}localLogin",
+            "at": at,
+            "rt": rt,
+          }),
+        );
+      } else if (_persistenceManager.persistence.type ==
+          Persistence.INDEXED_DB) {
+        _persistenceManager.makeEvent(
+          jsonEncode({
+            "name": "${app.options.appID}indexedDBLogin",
+            "at": at,
+            "rt": rt,
+          }),
+        );
       } else {
-        _persistenceManager.makeEvent(jsonEncode({"name":"${app.options.appID}otherLogin"}));
+        _persistenceManager.makeEvent(
+          jsonEncode({"name": "${app.options.appID}otherLogin"}),
+        );
       }
     }
   }
@@ -204,9 +223,11 @@ class FusabaseAuth {
   /// @nodoc
   void _syncLogoutPersistence() {
     if (kIsWeb) {
-      if (_persistenceManager.persistence.type == Persistence.LOCAL
-      || _persistenceManager.persistence.type == Persistence.INDEXED_DB) {
-        _persistenceManager.makeEvent(jsonEncode({"name":"${app.options.appID}localLogout"}));
+      if (_persistenceManager.persistence.type == Persistence.LOCAL ||
+          _persistenceManager.persistence.type == Persistence.INDEXED_DB) {
+        _persistenceManager.makeEvent(
+          jsonEncode({"name": "${app.options.appID}localLogout"}),
+        );
       }
     }
   }
@@ -234,20 +255,22 @@ class FusabaseAuth {
     if (!kIsWeb) {
       throw FusabaseAuthException(
         message: AuthErrorMessageTemplates.PERSISTENCE_WEB_ONLY,
-        code: 'invalid-persistence'
+        code: 'invalid-persistence',
       );
     }
     try {
-      accessToken = await __getIdTokenResult(app.options.appID + globals.accessTokenKey);
-      refreshToken = await __getToken(app.options.appID + globals.refreshTokenKey);
+      accessToken = await __getIdTokenResult(
+        app.options.appID + globals.accessTokenKey,
+      );
+      refreshToken = await __getToken(
+        app.options.appID + globals.refreshTokenKey,
+      );
     } catch (e) {
       //do nothing
     }
-  
 
-    for (var j = 0;j<4;j++) {
-
-      if(accessToken != null && refreshToken != null) {
+    for (var j = 0; j < 4; j++) {
+      if (accessToken != null && refreshToken != null) {
         break;
       }
 
@@ -266,9 +289,12 @@ class FusabaseAuth {
           break;
       }
 
-      accessToken = await __getIdTokenResult(app.options.appID + globals.accessTokenKey);
-      refreshToken = await __getToken(app.options.appID + globals.refreshTokenKey);
-
+      accessToken = await __getIdTokenResult(
+        app.options.appID + globals.accessTokenKey,
+      );
+      refreshToken = await __getToken(
+        app.options.appID + globals.refreshTokenKey,
+      );
     }
 
     await __removeCredTokens();
@@ -279,26 +305,33 @@ class FusabaseAuth {
     } else {
       dynamic res = await _persistenceManager.setPersistence(persistence);
       if (!res) {
-        await __setCredTokens(
-            {"accessToken": accessToken, "refreshToken": refreshToken});
+        await __setCredTokens({
+          "accessToken": accessToken,
+          "refreshToken": refreshToken,
+        });
         return false;
       }
-      await __setCredTokens(
-          {"accessToken": accessToken, "refreshToken": refreshToken});
+      await __setCredTokens({
+        "accessToken": accessToken,
+        "refreshToken": refreshToken,
+      });
       _syncLoginPersistence(accessToken.token, refreshToken);
       dynamic userDetails;
       try {
-        userDetails = await _authHelper.getUserDetails(accessToken: accessToken);
+        userDetails = await _authHelper.getUserDetails(
+          accessToken: accessToken,
+        );
       } catch (e) {
         __updateCurrentUser(null);
         return true;
       }
 
       final User user = User(
-          user: userDetails,
-          auth: this,
-          accessToken: accessToken,
-          refreshToken: refreshToken);
+        user: userDetails,
+        auth: this,
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+      );
       await user.getFUSABASEToken();
       __updateCurrentUser(user);
       return true;
@@ -354,8 +387,8 @@ class FusabaseAuth {
   /// Returns a [Future] that completes when handled.
   /// @nodoc
   Future<void> _handleOtherLogin() async {
-    if (_persistenceManager.persistence.type == Persistence.LOCAL 
-    || _persistenceManager.persistence.type == Persistence.INDEXED_DB) {
+    if (_persistenceManager.persistence.type == Persistence.LOCAL ||
+        _persistenceManager.persistence.type == Persistence.INDEXED_DB) {
       await _signOutOnEvent();
     }
   }
@@ -367,8 +400,8 @@ class FusabaseAuth {
   /// Returns a [Future] that completes when handled.
   /// @nodoc
   Future<void> _handleLogout() async {
-    if (_persistenceManager.persistence.type == Persistence.LOCAL
-    || _persistenceManager.persistence.type == Persistence.INDEXED_DB) {
+    if (_persistenceManager.persistence.type == Persistence.LOCAL ||
+        _persistenceManager.persistence.type == Persistence.INDEXED_DB) {
       await _signOutOnEvent();
     }
   }
@@ -378,36 +411,49 @@ class FusabaseAuth {
   /// Checks for persisted tokens, refreshes if needed, and sets current user.
   /// @nodoc
   Future<void> __initialLogin() async {
-    IdTokenResult? access_token = await __getIdTokenResult(app.options.appID + globals.accessTokenKey);
-    String? refresh_token = await __getToken(app.options.appID + globals.refreshTokenKey);
+    IdTokenResult? access_token = await __getIdTokenResult(
+      app.options.appID + globals.accessTokenKey,
+    );
+    String? refresh_token = await __getToken(
+      app.options.appID + globals.refreshTokenKey,
+    );
 
     if ((access_token == null || refresh_token == null) && kIsWeb) {
       _persistenceManager.setSessionPersistence();
-      access_token = await __getIdTokenResult(app.options.appID + globals.accessTokenKey);
-      refresh_token = await __getToken(app.options.appID + globals.refreshTokenKey);
+      access_token = await __getIdTokenResult(
+        app.options.appID + globals.accessTokenKey,
+      );
+      refresh_token = await __getToken(
+        app.options.appID + globals.refreshTokenKey,
+      );
     }
 
     if (access_token == null || refresh_token == null) {
       __updateCurrentUser(null);
-      _persistenceManager = PersistenceManager(name:"${app.options.appID}_AUTH_STORE");
+      _persistenceManager = PersistenceManager(
+        name: "${app.options.appID}_AUTH_STORE",
+      );
       return;
     }
 
-    dynamic _helper = this.config.authType == 'idcs'
-        ? IDCSUserHelper(
-            options: options,
-            config: config,
-            logLevel: app.logLevel)
-        // : (config.authType == "base_s" || config.authType == "ldap_s")
-        //     ? ONPREMSRPUserHelper(
-        //         options: options,
-        //         config: config,
-        //         accessToken: access_token,
-        //         logLevel: app.logLevel)
+    dynamic _helper =
+        this.config.authType == 'idcs'
+            ? IDCSUserHelper(
+              options: options,
+              config: config,
+              logLevel: app.logLevel,
+            )
+            // : (config.authType == "base_s" || config.authType == "ldap_s")
+            //     ? ONPREMSRPUserHelper(
+            //         options: options,
+            //         config: config,
+            //         accessToken: access_token,
+            //         logLevel: app.logLevel)
             : ONPREMUserHelper(
-                options: options,
-                config: config,
-                logLevel: app.logLevel);
+              options: options,
+              config: config,
+              logLevel: app.logLevel,
+            );
     _helper._setApp(app);
 
     if (_helper.vaidateAccessToken(access_token) == false) {
@@ -415,7 +461,9 @@ class FusabaseAuth {
 
       try {
         dynamic tok = await _helper.refreshAccessToken(
-            client: createClient(app), refreshToken: refresh_token);
+          client: createClient(app),
+          refreshToken: refresh_token,
+        );
         refresh_token = tok["refresh_token"];
         access_token = IdTokenResult(token: tok["access_token"]);
       } catch (e) {
@@ -423,11 +471,13 @@ class FusabaseAuth {
         return;
       }
 
-      await __setCredTokens(
-          {"accessToken": access_token, "refreshToken": refresh_token});
+      await __setCredTokens({
+        "accessToken": access_token,
+        "refreshToken": refresh_token,
+      });
 
       if (access_token?.token != "" && refresh_token != "") {
-        _syncLoginPersistence(access_token?.token ?? "",refresh_token ?? "");
+        _syncLoginPersistence(access_token?.token ?? "", refresh_token ?? "");
       }
     }
 
@@ -445,10 +495,11 @@ class FusabaseAuth {
     }
 
     final User user = User(
-        user: userDetails,
-        auth: this,
-        accessToken: access_token,
-        refreshToken: refresh_token);
+      user: userDetails,
+      auth: this,
+      accessToken: access_token,
+      refreshToken: refresh_token,
+    );
     await user.getFUSABASEToken();
     __updateCurrentUser(user);
   }
@@ -478,7 +529,9 @@ class FusabaseAuth {
   /// Returns a [Future] with [UserCredential] or null on failure.
   /// @nodoc
   Future<UserCredential?> _signInOnEvent(
-      IdTokenResult accessToken, String refreshToken) async {
+    IdTokenResult accessToken,
+    String refreshToken,
+  ) async {
     dynamic userDetails;
 
     try {
@@ -489,35 +542,49 @@ class FusabaseAuth {
     }
 
     final User user = User(
-        user: userDetails,
-        auth: this,
-        accessToken: accessToken,
-        refreshToken: refreshToken);
+      user: userDetails,
+      auth: this,
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+    );
     await user.getFUSABASEToken();
 
     AuthCredential credential = EmailAuthProvider.credential(email: "");
     if (userDetails["idp_name"] == "UserNamePassword") {
       credential = EmailAuthProvider.credential(email: user.email ?? "");
     } else {
-     if (userDetails["idp_name"].startsWith("google")) {
-      credential = GoogleAuthProvider.credential(accessToken: accessToken.token);
-     } else if (userDetails["idp_name"].startsWith("github")) {
-      credential = GithubAuthProvider.credential(accessToken: accessToken.token);
-     } else if (userDetails["idp_name"].startsWith("facebook")) {
-      credential = FacebookAuthProvider.credential(accessToken: accessToken.token);
-     } else if (userDetails["idp_name"].startsWith("saml_") || userDetails["idp_name"].startsWith("oidc_")) {
-      credential = OAuthCredential(providerId: userDetails["idp_name"],
-      signInMethod: userDetails["idp_name"], accessToken: accessToken.token,
-      idToken: null);
-     } else if (userDetails["idp_name"].startsWith("idcs")) {
-      credential = IDCSAuthProvider.credential(accessToken: accessToken.token);
-     }
+      if (userDetails["idp_name"].startsWith("google")) {
+        credential = GoogleAuthProvider.credential(
+          accessToken: accessToken.token,
+        );
+      } else if (userDetails["idp_name"].startsWith("github")) {
+        credential = GithubAuthProvider.credential(
+          accessToken: accessToken.token,
+        );
+      } else if (userDetails["idp_name"].startsWith("facebook")) {
+        credential = FacebookAuthProvider.credential(
+          accessToken: accessToken.token,
+        );
+      } else if (userDetails["idp_name"].startsWith("saml_") ||
+          userDetails["idp_name"].startsWith("oidc_")) {
+        credential = OAuthCredential(
+          providerId: userDetails["idp_name"],
+          signInMethod: userDetails["idp_name"],
+          accessToken: accessToken.token,
+          idToken: null,
+        );
+      } else if (userDetails["idp_name"].startsWith("idcs")) {
+        credential = IDCSAuthProvider.credential(
+          accessToken: accessToken.token,
+        );
+      }
     }
 
     final userCred = UserCredential(user: user, credential: credential);
 
     await __setCredTokens({
-      "accessToken": accessToken, "refreshToken": refreshToken
+      "accessToken": accessToken,
+      "refreshToken": refreshToken,
     });
 
     __updateCurrentUser(user);
@@ -631,10 +698,14 @@ class FusabaseAuth {
         credDetails["refreshToken"] == null) {
       return false;
     }
-    dynamic res1 = await __setToken(app.options.appID + 
-        globals.accessTokenKey, credDetails["accessToken"].token);
-    dynamic res2 =
-        await __setToken(app.options.appID + globals.refreshTokenKey, credDetails["refreshToken"]);
+    dynamic res1 = await __setToken(
+      app.options.appID + globals.accessTokenKey,
+      credDetails["accessToken"].token,
+    );
+    dynamic res2 = await __setToken(
+      app.options.appID + globals.refreshTokenKey,
+      credDetails["refreshToken"],
+    );
     return res1 && res2;
   }
 
@@ -643,41 +714,68 @@ class FusabaseAuth {
   /// Returns a [Future] that completes when tokens are removed.
   /// @nodoc
   Future<void> __removeCredTokens() async {
-    await __removeToken(app.options.appID + globals.accessTokenKey);
-    await __removeToken(app.options.appID + globals.refreshTokenKey);
+    Object? tokenRemovalError;
+    StackTrace? tokenRemovalStackTrace;
+
+    try {
+      await __removeToken(app.options.appID + globals.accessTokenKey);
+    } catch (error, stackTrace) {
+      tokenRemovalError = error;
+      tokenRemovalStackTrace = stackTrace;
+    }
+
+    try {
+      await __removeToken(app.options.appID + globals.refreshTokenKey);
+    } catch (error, stackTrace) {
+      tokenRemovalError ??= error;
+      tokenRemovalStackTrace ??= stackTrace;
+    }
+
+    if (tokenRemovalError != null) {
+      Error.throwWithStackTrace(tokenRemovalError, tokenRemovalStackTrace!);
+    }
   }
 
-/// Creates a new user with the provided email and password.
-///
-/// [email] The user's email address.
-/// [password] The user's password.
-///
-/// Registers the user and signs them in.
-///
-/// Returns a [Future] containing the [UserCredential] with the new user.
-///
-/// Throws [FusabaseAuthException] if email or password is invalid or registration fails.
-///
-/// Example:
-/// ```dart
-/// UserCredential credential = await auth.createUserWithEmailAndPassword(
-///   email: 'user@example.com',
-///   password: 'password123'
-/// );
-/// ```
-  Future<UserCredential> createUserWithEmailAndPassword(
-      {required String email, required String password}) async {
-        await _initFuture;
+  /// Creates a new user with the provided email and password.
+  ///
+  /// [email] The user's email address.
+  /// [password] The user's password.
+  ///
+  /// Registers the user and signs them in.
+  ///
+  /// Returns a [Future] containing the [UserCredential] with the new user.
+  ///
+  /// Throws [FusabaseAuthException] if email or password is invalid or registration fails.
+  ///
+  /// Example:
+  /// ```dart
+  /// UserCredential credential = await auth.createUserWithEmailAndPassword(
+  ///   email: 'user@example.com',
+  ///   password: 'password123'
+  /// );
+  /// ```
+  Future<UserCredential> createUserWithEmailAndPassword({
+    required String email,
+    required String password,
+  }) async {
+    await _initFuture;
     if (email == "" || password == "") {
       throw AuthUtils.authErrorHandler(
-          status: globals.ErrorMap[globals.ErrorCode.INVALID_ARGS] ?? 999,
-          message: AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.INVALID_PARAM, ['email or password']),
-          authType: null,
-          stackTrace: null);
+        status: globals.ErrorMap[globals.ErrorCode.INVALID_ARGS] ?? 999,
+        message: AuthErrorMessageTemplates.format(
+          AuthErrorMessageTemplates.INVALID_PARAM,
+          ['email or password'],
+        ),
+        authType: null,
+        stackTrace: null,
+      );
     }
     await _authHelper.registerUser(
-        client: createClient(app), email: email, password: password, url:  this.app.options.authType == "idcs" ? '${this.app.options.ordsHost}_/baas-services/idm/idcs/${this.app.options.projectID}/${IDCSConfig.ADD_USER_REST_EP}?apiKey=${this.app.options.appID}' : "");
-    
+      client: createClient(app),
+      email: email,
+      password: password,
+      url: "",
+    );
 
     return signInWithEmailAndPassword(email: email, password: password);
   }
@@ -690,69 +788,81 @@ class FusabaseAuth {
   ///
   /// Returns the [UserCredential].
   /// @nodoc
-  Future<UserCredential> _createCredentials (dynamic userData) async {
+  Future<UserCredential> _createCredentials(dynamic userData) async {
     IdTokenResult accessToken = userData["access_token"];
     String refreshToken = userData["refresh_token"];
     final userDetails = userData["userDetails"];
     final User user = User(
-        user: userDetails,
-        auth: this,
-        accessToken: accessToken,
-        refreshToken: refreshToken);
+      user: userDetails,
+      auth: this,
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+    );
     await user.getFUSABASEToken();
 
-      final AuthCredential creds = EmailAuthProvider.credential(email:
-       user.email ?? "");
-      final userCred = UserCredential(user: user, credential: creds);
+    final AuthCredential creds = EmailAuthProvider.credential(
+      email: user.email ?? "",
+    );
+    final userCred = UserCredential(user: user, credential: creds);
 
-      await __setCredTokens({
-        "accessToken":accessToken,
-        "refreshToken":refreshToken
-      });
-      __updateCurrentUser(user);
-      _syncLoginPersistence(accessToken.token,refreshToken);
-      return userCred;
+    await __setCredTokens({
+      "accessToken": accessToken,
+      "refreshToken": refreshToken,
+    });
+    __updateCurrentUser(user);
+    _syncLoginPersistence(accessToken.token, refreshToken);
+    return userCred;
   }
 
-/// Signs in a user with email and password.
-///
-/// [email] The user's email address.
-/// [password] The user's password.
-///
-/// Authenticates the user and sets up session.
-///
-/// Returns a [Future] containing the [UserCredential].
-///
-/// Throws [FusabaseAuthException] if email or password is invalid or authentication fails.
-///
-/// Example:
-/// ```dart
-/// UserCredential credential = await auth.signInWithEmailAndPassword(
-///   email: 'user@example.com',
-///   password: 'password123'
-/// );
-/// ```
-  Future<UserCredential> signInWithEmailAndPassword(
-      {required String email, required String password}) async {
-        await _initFuture;
+  /// Signs in a user with email and password.
+  ///
+  /// [email] The user's email address.
+  /// [password] The user's password.
+  ///
+  /// Authenticates the user and sets up session.
+  ///
+  /// Returns a [Future] containing the [UserCredential].
+  ///
+  /// Throws [FusabaseAuthException] if email or password is invalid or authentication fails.
+  ///
+  /// Example:
+  /// ```dart
+  /// UserCredential credential = await auth.signInWithEmailAndPassword(
+  ///   email: 'user@example.com',
+  ///   password: 'password123'
+  /// );
+  /// ```
+  Future<UserCredential> signInWithEmailAndPassword({
+    required String email,
+    required String password,
+  }) async {
+    await _initFuture;
     if (email == "" || password == "") {
       throw AuthUtils.authErrorHandler(
-          status: globals.ErrorMap[globals.ErrorCode.INVALID_ARGS] ?? 999,
-          message: AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.INVALID_PARAM, ['email or password']),
-          authType: null,
-          stackTrace: null);
+        status: globals.ErrorMap[globals.ErrorCode.INVALID_ARGS] ?? 999,
+        message: AuthErrorMessageTemplates.format(
+          AuthErrorMessageTemplates.INVALID_PARAM,
+          ['email or password'],
+        ),
+        authType: null,
+        stackTrace: null,
+      );
     }
-    final credDetails = await this
-        ._authHelper
-        .authenticateAndGetDetails(email: email, password: password);
+    final credDetails = await this._authHelper.authenticateAndGetDetails(
+      email: email,
+      password: password,
+    );
     final User user = User(
-        user: credDetails["userDetails"],
-        auth: this,
-        accessToken: credDetails["accessToken"],
-        refreshToken: credDetails["refreshToken"]);
+      user: credDetails["userDetails"],
+      auth: this,
+      accessToken: credDetails["accessToken"],
+      refreshToken: credDetails["refreshToken"],
+    );
 
-    await __setCredTokens({"accessToken": credDetails["accessToken"],
-        "refreshToken": credDetails["refreshToken"]});
+    await __setCredTokens({
+      "accessToken": credDetails["accessToken"],
+      "refreshToken": credDetails["refreshToken"],
+    });
     await user.getFUSABASEToken();
 
     final AuthCredential creds = EmailAuthProvider.credential(email: email);
@@ -760,154 +870,221 @@ class FusabaseAuth {
 
     __updateCurrentUser(user);
 
-    _syncLoginPersistence(credDetails["accessToken"].token,credDetails["refreshToken"]);
+    _syncLoginPersistence(
+      credDetails["accessToken"].token,
+      credDetails["refreshToken"],
+    );
 
     return userCred;
   }
 
-/// Signs in using a popup window.
-///
-/// [provider] The authentication provider (e.g. GoogleAuthProvider).
-///
-/// Opens popup for provider sign in.
-///
-/// Returns a [Future] containing the [UserCredential].
-///
-/// Example:
-/// ```dart
-/// UserCredential credential = await auth.signInWithPopup(GoogleAuthProvider());
-/// ```
+  /// Signs in using a popup window.
+  ///
+  /// [provider] The authentication provider (e.g. GoogleAuthProvider).
+  ///
+  /// Opens popup for provider sign in.
+  ///
+  /// Returns a [Future] containing the [UserCredential].
+  ///
+  /// Example:
+  /// ```dart
+  /// UserCredential credential = await auth.signInWithPopup(GoogleAuthProvider());
+  /// ```
   Future<UserCredential> signInWithPopup(dynamic provider) async {
     await _initFuture;
     dynamic res = await this._authHelper.signInWithBrowserHelper(provider);
     final authnToken = null;
-    
+
     final access_token = IdTokenResult(token: res["access_token"]);
     final refresh_token = res["refresh_token"];
 
-    final userDetails =
-        await _authHelper.getUserDetails(accessToken: access_token);
+    final userDetails = await _authHelper.getUserDetails(
+      accessToken: access_token,
+    );
 
     final User user = User(
-        user: userDetails,
-        auth: this,
-        accessToken: access_token,
-        refreshToken: refresh_token);
+      user: userDetails,
+      auth: this,
+      accessToken: access_token,
+      refreshToken: refresh_token,
+    );
     await user.getFUSABASEToken();
 
     var userCred;
 
     if (provider is GoogleAuthProvider) {
-      userCred = UserCredential(user: user, credential: GoogleAuthProvider.credential(accessToken: access_token.token,
-        idToken: authnToken));
+      userCred = UserCredential(
+        user: user,
+        credential: GoogleAuthProvider.credential(
+          accessToken: access_token.token,
+          idToken: authnToken,
+        ),
+      );
     } else if (provider is FacebookAuthProvider) {
-      userCred = UserCredential(user: user, credential: FacebookAuthProvider.credential(accessToken: access_token.token,
-        idToken: authnToken));
+      userCred = UserCredential(
+        user: user,
+        credential: FacebookAuthProvider.credential(
+          accessToken: access_token.token,
+          idToken: authnToken,
+        ),
+      );
     } else if (provider is GithubAuthProvider) {
-      userCred = UserCredential(user: user, credential: GithubAuthProvider.credential(accessToken: access_token.token,
-        idToken: authnToken));
+      userCred = UserCredential(
+        user: user,
+        credential: GithubAuthProvider.credential(
+          accessToken: access_token.token,
+          idToken: authnToken,
+        ),
+      );
     } else if (provider is SAMLAuthProvider || provider is OAuthProvider) {
-      userCred = UserCredential(user: user, credential: provider.credential( accessToken: access_token.token,
-        idToken: authnToken));
+      userCred = UserCredential(
+        user: user,
+        credential: provider.credential(
+          accessToken: access_token.token,
+          idToken: authnToken,
+        ),
+      );
     } else if (provider is IDCSAuthProvider) {
-      userCred = UserCredential(user: user, credential: IDCSAuthProvider.credential(accessToken: access_token.token,
-        idToken: authnToken));
-     }
+      userCred = UserCredential(
+        user: user,
+        credential: IDCSAuthProvider.credential(
+          accessToken: access_token.token,
+          idToken: authnToken,
+        ),
+      );
+    }
 
-    await __setCredTokens(
-        {"accessToken": access_token, "refreshToken": refresh_token});
+    await __setCredTokens({
+      "accessToken": access_token,
+      "refreshToken": refresh_token,
+    });
     __updateCurrentUser(user);
     return userCred;
   }
 
-/// Signs in using credentials.
-///
-/// [credential] The AuthCredential from provider.
-///
-/// Authenticates using the credential.
-///
-/// Returns a [Future] containing the [UserCredential].
-///
-/// Example:
-/// ```dart
-/// UserCredential credential = await auth.signInWithCredential(myCredential);
-/// ```
+  /// Signs in using credentials.
+  ///
+  /// [credential] The AuthCredential from provider.
+  ///
+  /// Authenticates using the credential.
+  ///
+  /// Returns a [Future] containing the [UserCredential].
+  ///
+  /// Example:
+  /// ```dart
+  /// UserCredential credential = await auth.signInWithCredential(myCredential);
+  /// ```
   Future<UserCredential> signInWithCredential(AuthCredential credential) async {
     await _initFuture;
-    final credDetails = await _authHelper
-        .signInWithCredentialHelper(client: createClient(app), credential: credential);
+    final credDetails = await _authHelper.signInWithCredentialHelper(
+      client: createClient(app),
+      credential: credential,
+    );
 
     final access_token = IdTokenResult(token: credDetails["access_token"]);
     final refresh_token = credDetails["refresh_token"];
-    final userDetails =
-        await _authHelper.getUserDetails(accessToken: access_token);
+    final userDetails = await _authHelper.getUserDetails(
+      accessToken: access_token,
+    );
 
     final User user = User(
-        user: userDetails,
-        auth: this,
-        accessToken: access_token,
-        refreshToken: refresh_token);
+      user: userDetails,
+      auth: this,
+      accessToken: access_token,
+      refreshToken: refresh_token,
+    );
     await user.getFUSABASEToken();
     var userCred;
     final authnToken = null;
 
     if (credential is GoogleAuthCredential) {
-      userCred = UserCredential(user: user, credential: GoogleAuthProvider.credential(accessToken: access_token.token,
-        idToken: authnToken));
+      userCred = UserCredential(
+        user: user,
+        credential: GoogleAuthProvider.credential(
+          accessToken: access_token.token,
+          idToken: authnToken,
+        ),
+      );
     } else if (credential is FacebookAuthCredential) {
-      userCred = UserCredential(user: user, credential: FacebookAuthProvider.credential(accessToken: access_token.token,
-        idToken: authnToken));
+      userCred = UserCredential(
+        user: user,
+        credential: FacebookAuthProvider.credential(
+          accessToken: access_token.token,
+          idToken: authnToken,
+        ),
+      );
     } else if (credential is GithubAuthCredential) {
-      userCred = UserCredential(user: user, credential: GithubAuthProvider.credential(accessToken: access_token.token,
-        idToken: authnToken));
+      userCred = UserCredential(
+        user: user,
+        credential: GithubAuthProvider.credential(
+          accessToken: access_token.token,
+          idToken: authnToken,
+        ),
+      );
     } else if (credential is IDCSAuthCredential) {
-      userCred = UserCredential(user: user, credential: IDCSAuthProvider.credential(accessToken: access_token.token,
-        idToken: authnToken));
+      userCred = UserCredential(
+        user: user,
+        credential: IDCSAuthProvider.credential(
+          accessToken: access_token.token,
+          idToken: authnToken,
+        ),
+      );
     }
 
-    await __setCredTokens(
-        {"accessToken": access_token, "refreshToken": refresh_token});
+    await __setCredTokens({
+      "accessToken": access_token,
+      "refreshToken": refresh_token,
+    });
     __updateCurrentUser(user);
     return userCred;
   }
 
-/// Initiates sign in with redirect.
-///
-/// [provider] The authentication provider.
-///
-/// Redirects to provider sign in page.
-///
-/// Returns a [Future] that completes when redirect is initiated.
-///
-/// Example:
-/// ```dart
-/// await auth.signInWithRedirect(GoogleAuthProvider());
-/// ```
+  /// Initiates sign in with redirect.
+  ///
+  /// [provider] The authentication provider.
+  ///
+  /// Redirects to provider sign in page.
+  ///
+  /// Returns a [Future] that completes when redirect is initiated.
+  ///
+  /// Example:
+  /// ```dart
+  /// await auth.signInWithRedirect(GoogleAuthProvider());
+  /// ```
   Future<void> signInWithRedirect(AuthProvider provider) async {
     await _initFuture;
     dynamic res = await _authHelper.generatePKCE(provider);
 
-    await __setLStoreToken(app.options.appID + globals.loginKey, globals.redirectKey);
-    await __setLStoreToken(app.options.appID + globals.providerKey,
-     provider.providerId);
-    await __setLStoreToken(app.options.appID + globals.codeVerifierKey,
-      res["codeVerifier"]);
+    await __setLStoreToken(
+      app.options.appID + globals.loginKey,
+      globals.redirectKey,
+    );
+    await __setLStoreToken(
+      app.options.appID + globals.providerKey,
+      provider.providerId,
+    );
+    await __setLStoreToken(
+      app.options.appID + globals.codeVerifierKey,
+      res["codeVerifier"],
+    );
     await _authHelper.signInWithRedirectHelper(provider, res);
   }
 
-/// Gets the result of a redirect sign in.
-///
-/// Retrieves result after redirect back from provider.
-///
-/// Returns a [Future] containing the [UserCredential].
-///
-/// Example:
-/// ```dart
-/// UserCredential credential = await auth.getRedirectResult();
-/// ```
+  /// Gets the result of a redirect sign in.
+  ///
+  /// Retrieves result after redirect back from provider.
+  ///
+  /// Returns a [Future] containing the [UserCredential].
+  ///
+  /// Example:
+  /// ```dart
+  /// UserCredential credential = await auth.getRedirectResult();
+  /// ```
   Future<UserCredential> getRedirectResult() async {
     await _initFuture;
-    String? loginState = await __getLStoreToken(app.options.appID + globals.loginKey);
+    String? loginState = await __getLStoreToken(
+      app.options.appID + globals.loginKey,
+    );
     if (loginState != globals.redirectKey) {
       return UserCredential(user: null, credential: null);
     }
@@ -918,183 +1095,238 @@ class FusabaseAuth {
       throw AuthUtils.authErrorHandler(
         status: globals.ErrorMap[globals.ErrorCode.NOT_IMPLEMENT] ?? 999,
         message: AuthErrorMessageTemplates.METHOD_NOT_IMPLEMENTED,
-        authType: config.authType.toUpperCase());
+        authType: config.authType.toUpperCase(),
+      );
     }
-    String? verifier = await __getLStoreToken(app.options.appID
-      + globals.codeVerifierKey);
-    String? providerId = await __getLStoreToken(app.options.appID
-      + globals.providerKey);
+    String? verifier = await __getLStoreToken(
+      app.options.appID + globals.codeVerifierKey,
+    );
+    String? providerId = await __getLStoreToken(
+      app.options.appID + globals.providerKey,
+    );
 
     if (code == null || verifier == null || providerId == null || code == "") {
-      return UserCredential(user:null, credential: null);
+      return UserCredential(user: null, credential: null);
     }
 
-    dynamic res = await _authHelper.getTokensAfterRedirect(client:
-     createClient(app), code: code, verifier: verifier);
+    dynamic res = await _authHelper.getTokensAfterRedirect(
+      client: createClient(app),
+      code: code,
+      verifier: verifier,
+    );
 
-    if (res!=null && res["id_token"]!=null && res["access_token"]==null) {
+    if (res != null && res["id_token"] != null && res["access_token"] == null) {
       if (providerId == GoogleAuthProvider.PROVIDER_ID) {
-        return await _currentUser!.linkWithCredential(GoogleAuthProvider.credential(idToken: res["id_token"]));
+        return await _currentUser!.linkWithCredential(
+          GoogleAuthProvider.credential(idToken: res["id_token"]),
+        );
       } else if (providerId == FacebookAuthProvider.PROVIDER_ID) {
-        return await _currentUser!.linkWithCredential(FacebookAuthProvider.credential(idToken: res["id_token"]));
+        return await _currentUser!.linkWithCredential(
+          FacebookAuthProvider.credential(idToken: res["id_token"]),
+        );
       } else if (providerId == GithubAuthProvider.PROVIDER_ID) {
-        return await _currentUser!.linkWithCredential(GithubAuthProvider.credential(idToken: res["id_token"]));
+        return await _currentUser!.linkWithCredential(
+          GithubAuthProvider.credential(idToken: res["id_token"]),
+        );
       }
     }
 
     final authnToken = null;
-    
+
     final access_token = IdTokenResult(token: res["access_token"]);
     final refresh_token = res["refresh_token"];
 
-    final userDetails =
-        await _authHelper.getUserDetails(accessToken: access_token);
+    final userDetails = await _authHelper.getUserDetails(
+      accessToken: access_token,
+    );
 
     final User user = User(
-        user: userDetails,
-        auth: this,
-        accessToken: access_token,
-        refreshToken: refresh_token);
+      user: userDetails,
+      auth: this,
+      accessToken: access_token,
+      refreshToken: refresh_token,
+    );
     await user.getFUSABASEToken();
 
     var userCred;
     dynamic provider = _authHelper.getProvider(providerId);
 
     if (provider is GoogleAuthProvider) {
-      userCred = UserCredential(user: user, credential: GoogleAuthProvider.credential(accessToken: access_token.token,
-        idToken: authnToken));
+      userCred = UserCredential(
+        user: user,
+        credential: GoogleAuthProvider.credential(
+          accessToken: access_token.token,
+          idToken: authnToken,
+        ),
+      );
     } else if (provider is FacebookAuthProvider) {
-      userCred = UserCredential(user: user, credential: FacebookAuthProvider.credential(accessToken: access_token.token,
-        idToken: authnToken));
+      userCred = UserCredential(
+        user: user,
+        credential: FacebookAuthProvider.credential(
+          accessToken: access_token.token,
+          idToken: authnToken,
+        ),
+      );
     } else if (provider is GithubAuthProvider) {
-      userCred = UserCredential(user: user, credential: GithubAuthProvider.credential(accessToken: access_token.token,
-        idToken: authnToken));
+      userCred = UserCredential(
+        user: user,
+        credential: GithubAuthProvider.credential(
+          accessToken: access_token.token,
+          idToken: authnToken,
+        ),
+      );
     } else if (provider is SAMLAuthProvider || provider is OAuthProvider) {
-      userCred = UserCredential(user: user, credential: provider.credential( accessToken: access_token.token,
-        idToken: authnToken));
+      userCred = UserCredential(
+        user: user,
+        credential: provider.credential(
+          accessToken: access_token.token,
+          idToken: authnToken,
+        ),
+      );
     } else if (provider is IDCSAuthProvider) {
-      userCred = UserCredential(user: user, credential: IDCSAuthProvider.credential(accessToken: access_token.token,
-        idToken: authnToken));
+      userCred = UserCredential(
+        user: user,
+        credential: IDCSAuthProvider.credential(
+          accessToken: access_token.token,
+          idToken: authnToken,
+        ),
+      );
     }
 
-    await __setCredTokens(
-        {"accessToken": access_token, "refreshToken": refresh_token});
+    await __setCredTokens({
+      "accessToken": access_token,
+      "refreshToken": refresh_token,
+    });
     __updateCurrentUser(user);
     // if (!kIsWeb) {
     //   await __removeToken(app.options.appID + globals.codeKey);
     // }
-    await __removeLStoreToken(app.options.appID
-      + globals.codeVerifierKey);
+    await __removeLStoreToken(app.options.appID + globals.codeVerifierKey);
     if (kIsWeb) {
       _authHelper.removeCodeParamFromUrl();
     }
     return userCred;
   }
 
-/// Signs out the current user.
-///
-/// Performs sign out and clears persistence.
-///
-/// Returns a [Future] that completes when signed out.
-///
-/// Example:
-/// ```dart
-/// await auth.signOut();
-/// ```
+  /// Signs out the current user.
+  ///
+  /// Performs sign out and clears persistence.
+  ///
+  /// Returns a [Future] that completes when signed out.
+  ///
+  /// Example:
+  /// ```dart
+  /// await auth.signOut();
+  /// ```
   Future<void> signOut() async {
     await _initFuture;
-    await _authHelper.performSignOut(currentUser?.refreshToken);
-    await __removeCredTokens();
-    __updateCurrentUser(null);
-    _syncLogoutPersistence();
+    try {
+      await _authHelper.performSignOut(currentUser?.refreshToken);
+    } finally {
+      try {
+        await __removeCredTokens();
+      } finally {
+        __updateCurrentUser(null);
+        _syncLogoutPersistence();
+      }
+    }
   }
 
-/// Sends a password reset email.
-///
-/// [email] The email address.
-///
-/// Sends reset link to the email.
-///
-/// Returns a [Future] that completes when email is sent.
-///
-/// Throws [FusabaseAuthException] on failure.
-///
-/// Example:
-/// ```dart
-/// await auth.sendPasswordResetEmail(email: 'user@example.com');
-/// ```
+  /// Sends a password reset email.
+  ///
+  /// [email] The email address.
+  ///
+  /// Sends reset link to the email.
+  ///
+  /// Returns a [Future] that completes when email is sent.
+  ///
+  /// Throws [FusabaseAuthException] on failure.
+  ///
+  /// Example:
+  /// ```dart
+  /// await auth.sendPasswordResetEmail(email: 'user@example.com');
+  /// ```
   Future<void> sendPasswordResetEmail({required String email}) async {
     await _initFuture;
     await _authHelper.sendPasswordResetEmailHelper(
-        client: createClient(app), email: email);
+      client: createClient(app),
+      email: email,
+    );
   }
 
-/// Verifies a password reset code.
-///
-/// [code] The reset code from email.
-///
-/// Returns a [Future] containing the associated email.
-///
-/// Throws [FusabaseAuthException] if code is invalid.
-///
-/// Example:
-/// ```dart
-/// String email = await auth.verifyPasswordResetCode('resetCode');
-/// ```
+  /// Verifies a password reset code.
+  ///
+  /// [code] The reset code from email.
+  ///
+  /// Returns a [Future] containing the associated email.
+  ///
+  /// Throws [FusabaseAuthException] if code is invalid.
+  ///
+  /// Example:
+  /// ```dart
+  /// String email = await auth.verifyPasswordResetCode('resetCode');
+  /// ```
   Future<String> verifyPasswordResetCode(String code) async {
     await _initFuture;
     return await _authHelper.verifyPasswordResetCodeHelper(
-        client: createClient(app), code: code);
+      client: createClient(app),
+      code: code,
+    );
   }
 
-/// Confirms password reset with a new password.
-///
-/// [code] The reset code.
-/// [newPassword] The new password.
-///
-/// Resets the password using the code.
-///
-/// Returns a [Future] that completes when password is reset.
-///
-/// Throws [FusabaseAuthException] on failure.
-///
-/// Example:
-/// ```dart
-/// await auth.confirmPasswordReset(code: 'resetCode', newPassword: 'newPass');
-/// ```
-  Future<void> confirmPasswordReset(
-      {required String code, required String newPassword}) async {
-        await _initFuture;
+  /// Confirms password reset with a new password.
+  ///
+  /// [code] The reset code.
+  /// [newPassword] The new password.
+  ///
+  /// Resets the password using the code.
+  ///
+  /// Returns a [Future] that completes when password is reset.
+  ///
+  /// Throws [FusabaseAuthException] on failure.
+  ///
+  /// Example:
+  /// ```dart
+  /// await auth.confirmPasswordReset(code: 'resetCode', newPassword: 'newPass');
+  /// ```
+  Future<void> confirmPasswordReset({
+    required String code,
+    required String newPassword,
+  }) async {
+    await _initFuture;
     await _authHelper.confirmPasswordResetHelper(
-        client: createClient(app), code: code, newPassword: newPassword);
+      client: createClient(app),
+      code: code,
+      newPassword: newPassword,
+    );
   }
 
-/// Provides a stream of authentication state changes.
-///
-/// Streams changes to the signed-in user.
-///
-/// Returns a [Stream] of [User?] values.
-///
-/// Example:
-/// ```dart
-/// auth.authStateChanges().listen((user) {
-///   if (user != null) print('Signed in');
-/// });
-/// ```
+  /// Provides a stream of authentication state changes.
+  ///
+  /// Streams changes to the signed-in user.
+  ///
+  /// Returns a [Stream] of [User?] values.
+  ///
+  /// Example:
+  /// ```dart
+  /// auth.authStateChanges().listen((user) {
+  ///   if (user != null) print('Signed in');
+  /// });
+  /// ```
   Stream<User?> authStateChanges() => controller.stream;
 
-/// Provides a stream of ID token changes.
-///
-/// Streams changes when ID token is refreshed.
-///
-/// Returns a [Stream] of [User?] values.
-///
-/// Example:
-/// ```dart
-/// auth.idTokenChanges().listen((user) {
-///   // Handle token change
-/// });
-/// ```
+  /// Provides a stream of ID token changes.
+  ///
+  /// Streams changes when ID token is refreshed.
+  ///
+  /// Returns a [Stream] of [User?] values.
+  ///
+  /// Example:
+  /// ```dart
+  /// auth.idTokenChanges().listen((user) {
+  ///   // Handle token change
+  /// });
+  /// ```
   Stream<User?> idTokenChanges() => idTokenController.stream;
 
   /// Provides a stream of user changes.
@@ -1128,32 +1360,24 @@ class FusabaseAuth {
 /// @nodoc
 dynamic getConfig(FusabaseApp app) {
   dynamic projectConfig = app.options;
-  FusabaseOptions? options = app.options;
+  FusabaseOptions options = app.options;
 
-  if (projectConfig.authType == "base" || projectConfig.authType == "ldap") {
-    return ONPREMConfig(
-        domainURL:
-            "${options.ordsHost}_/baas-services/idm/onprem/${projectConfig.projectID}/",
-        authID: projectConfig.authID,
-        projectID: projectConfig.projectID,
-        authType: app.options.authType);
-  } 
-  // else if (projectConfig.authType == "base_s" ||
-  //     projectConfig.authType == "ldap_s") {
-  //   return ONPREMSRPConfig(
-  //       domainURL:
-  //           "${options.ordsHost}_/baas-services/idm/onprem/${projectConfig.projectID}/",
-  //       authID: projectConfig.authID,
-  //       projectID: projectConfig.projectID,
-  //       authType: app.options.authType);
-  // } 
-  else {
+  if (projectConfig.authType == "idcs") {
     return IDCSConfig(
-        domainURL: projectConfig.idcsConfig["domain_url"],
-        clientID: projectConfig.idcsConfig["clientId"],
-        clientSecret: projectConfig.idcsConfig["clientSecret"],
-        projectID: projectConfig.projectID,
-        selfRegistrationProfile:
-            projectConfig.idcsConfig["selfRegistrationProfile"]);
+      domainURL:
+          "${options.ordsHost}_/baas-services/idm/idcs/${projectConfig.projectID}/",
+      authID: projectConfig.authID ?? "",
+      projectID: projectConfig.projectID,
+      authType: app.options.authType,
+      idcsDomainURL: projectConfig.idcsDomainURL ?? "",
+    );
   }
+
+  return ONPREMConfig(
+    domainURL:
+        "${options.ordsHost}_/baas-services/idm/onprem/${projectConfig.projectID}/",
+    authID: projectConfig.authID ?? "",
+    projectID: projectConfig.projectID,
+    authType: app.options.authType,
+  );
 }

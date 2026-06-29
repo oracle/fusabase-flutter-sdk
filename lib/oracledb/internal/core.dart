@@ -26,6 +26,14 @@
 
 part of '../../oracledb.dart';
 
+Duration _safeLongPollingInterval(Settings settings) {
+  return FusabaseOptions.normalizeLongPollingDuration(
+    settings.webExperimentalLongPollingOptions?.timeoutDuration,
+  );
+}
+
+const int _maxRealtimeMessageQueueSize = 100;
+
 /// The main FusabaseOracledb class, providing access to collections, documents, transactions, etc.
 ///
 ///
@@ -46,50 +54,76 @@ class FusabaseOracledb {
   Settings settings;
   globals.LogLevel __logLevel;
   late WebSocketManager? _socketManager;
-  List<String> _messageQueue;
-  Map <String, String> _queryIdMap;
-  Map <String, List<String>> _localQueryIdMap;
-  Map <String, dynamic > _snapshotControllerMap;
-  
+  Future<void>? _socketConnectFuture;
+  Map<String, String> _messageQueue;
+  Map<String, String> _activeRealtimeSubscriptions;
+  Map<String, String> _queryIdMap;
+  Map<String, List<String>> _localQueryIdMap;
+  Map<String, dynamic> _snapshotControllerMap;
 
-  FusabaseOracledb({required this.app}) : this.__logLevel = app.logLevel, 
-    settings = Settings(host:"",sslEnabled: false,webExperimentalLongPollingOptions: WebExperimentalLongPollingOptions(timeoutDuration: Duration(seconds: 29))),
-    _snapStore = SnapshotStorage("${app.options.appID}_BAAS_SNAPS", "snapshots"),
-    _queryIdMap = {},
-    _messageQueue = [],
-    _localQueryIdMap = {},
-    _snapshotControllerMap = {},
-    _bundleStore = BundleStore("${app.options.appID}_BAAS_BUNDLES", "bundles") {
-      String socketURL = app.options.ordsHost;
-      String cert = socketURL.split("://")[0];
-      bool useSSL = true;
-      if (cert == "http") {
-        useSSL = false;
-      }
-      socketURL = socketURL.split("://")[1];
-      String schemaName = socketURL.split("ords")[1];
-      socketURL = socketURL.split("ords")[0];
-      socketURL = "${socketURL}ords/baas-realtime$schemaName";
-  
-      settings = Settings(host:socketURL, sslEnabled: useSSL,
-       webExperimentalForceLongPolling: !app.options.useSocket, webExperimentalAutoDetectLongPolling: app.options.useSocket,
-       webExperimentalLongPollingOptions: WebExperimentalLongPollingOptions(timeoutDuration: Duration(seconds: app.options.longPollingInterval)));
-
-      bool uselongPolling = settings.webExperimentalForceLongPolling ?? true;
-      if (settings.webExperimentalForceLongPolling ?? true) {
-        uselongPolling = true;
-      }
-      _socketManager = null;
-      // if (!uselongPolling) {
-      //   createSocketClient(app.auth).then((sManager) {
-      //     _socketManager = sManager;
-      //   });
-      // } else {
-      //   _socketManager = null;
-      // }
-      preSnapshot();
-      
+  FusabaseOracledb({required this.app})
+    : this.__logLevel = app.logLevel,
+      settings = Settings(
+        host: "",
+        sslEnabled: false,
+        webExperimentalLongPollingOptions: WebExperimentalLongPollingOptions(
+          timeoutDuration: Duration(
+            seconds: FusabaseOptions.defaultLongPollingIntervalSeconds,
+          ),
+        ),
+      ),
+      _snapStore = SnapshotStorage(
+        "${app.options.appID}_BAAS_SNAPS",
+        "snapshots",
+      ),
+      _queryIdMap = {},
+      _messageQueue = {},
+      _activeRealtimeSubscriptions = {},
+      _localQueryIdMap = {},
+      _snapshotControllerMap = {},
+      _bundleStore = BundleStore(
+        "${app.options.appID}_BAAS_BUNDLES",
+        "bundles",
+      ) {
+    String socketURL = app.options.ordsHost;
+    String cert = socketURL.split("://")[0];
+    bool useSSL = true;
+    if (cert == "http") {
+      useSSL = false;
     }
+    socketURL = socketURL.split("://")[1];
+    String schemaName = socketURL.split("ords")[1];
+    socketURL = socketURL.split("ords")[0];
+    socketURL = "${socketURL}ords/baas-realtime$schemaName";
+
+    settings = Settings(
+      host: socketURL,
+      sslEnabled: useSSL,
+      webExperimentalForceLongPolling: !app.options.useSocket,
+      webExperimentalAutoDetectLongPolling: app.options.useSocket,
+      webExperimentalLongPollingOptions: WebExperimentalLongPollingOptions(
+        timeoutDuration: Duration(
+          seconds: FusabaseOptions.normalizeLongPollingInterval(
+            app.options.longPollingInterval,
+          ),
+        ),
+      ),
+    );
+
+    bool uselongPolling = settings.webExperimentalForceLongPolling ?? true;
+    if (settings.webExperimentalForceLongPolling ?? true) {
+      uselongPolling = true;
+    }
+    _socketManager = null;
+    // if (!uselongPolling) {
+    //   createSocketClient(app.auth).then((sManager) {
+    //     _socketManager = sManager;
+    //   });
+    // } else {
+    //   _socketManager = null;
+    // }
+    preSnapshot();
+  }
 
   /// Gets a hash code for this FusabaseOracledb instance.
   @override
@@ -109,7 +143,7 @@ class FusabaseOracledb {
   /// ```
   static FusabaseOracledb instanceFor({required FusabaseApp app}) {
     app.store ??= FusabaseOracledb(app: app);
-    
+
     return app.store ?? FusabaseOracledb(app: app);
   }
 
@@ -123,9 +157,7 @@ class FusabaseOracledb {
   /// var db = FusabaseOracledb.instance;
   /// ```
   static FusabaseOracledb get instance {
-    return FusabaseOracledb.instanceFor(
-      app: Fusabase.app(),
-    );
+    return FusabaseOracledb.instanceFor(app: Fusabase.app());
   }
 
   /// Sends a message via the WebSocket.
@@ -138,16 +170,142 @@ class FusabaseOracledb {
   /// db.sendMessageSocket({'type': 'query', 'id': 1});
   /// ```
   /// @nodoc
-  void sendMessageSocket (dynamic message) {
+  void sendMessageSocket(dynamic message) {
     // if (message.containsKey("payload")) {
     //   message["payload"] = jsonEncode(message["payload"]);
-    // } 
+    // }
     String messageString = jsonEncode(message);
+    _trackRealtimeControlMessage(message, messageString);
     if (_socketManager == null) {
-      return ;
+      _queueSocketMessage(message, messageString);
+      return;
     }
     if (!_socketManager!.sendMessage(messageString)) {
-      _messageQueue.add(messageString);
+      _queueSocketMessage(message, messageString);
+    } else {
+      _clearQueuedSocketMessage(message, messageString);
+    }
+  }
+
+  String _socketMessageQueueKey(dynamic message, String messageString) {
+    if (message is Map && message.containsKey("queryId")) {
+      return message["queryId"].toString();
+    }
+    return "raw:$messageString";
+  }
+
+  int? _socketMessageStatus(dynamic message) {
+    if (message is! Map || !message.containsKey("status")) {
+      return null;
+    }
+    dynamic status = message["status"];
+    if (status is int) {
+      return status;
+    }
+    if (status is String) {
+      return int.tryParse(status);
+    }
+    return null;
+  }
+
+  void _trackRealtimeControlMessage(dynamic message, String messageString) {
+    int? status = _socketMessageStatus(message);
+    if (status == null) {
+      return;
+    }
+
+    String key = _socketMessageQueueKey(message, messageString);
+    if (status == 1) {
+      _activeRealtimeSubscriptions[key] = messageString;
+    } else if (status == 0) {
+      _activeRealtimeSubscriptions.remove(key);
+      _messageQueue.remove(key);
+    }
+  }
+
+  void _queueSocketMessage(dynamic message, String messageString) {
+    int? status = _socketMessageStatus(message);
+    String key = _socketMessageQueueKey(message, messageString);
+
+    if (status == 0) {
+      _messageQueue.remove(key);
+      return;
+    }
+
+    _queueSocketMessageByKey(key, messageString);
+  }
+
+  void _queueSocketMessageByKey(String key, String messageString) {
+    if (_messageQueue.containsKey(key)) {
+      _messageQueue[key] = messageString;
+      return;
+    }
+
+    while (_messageQueue.length >= _maxRealtimeMessageQueueSize) {
+      _messageQueue.remove(_messageQueue.keys.first);
+    }
+    _messageQueue[key] = messageString;
+  }
+
+  void _clearQueuedSocketMessage(dynamic message, String messageString) {
+    _messageQueue.remove(_socketMessageQueueKey(message, messageString));
+  }
+
+  void _handleSocketOpen(WebSocketManager socketManager) {
+    _replayActiveRealtimeSubscriptions(socketManager);
+    _flushQueuedSocketMessages(socketManager);
+  }
+
+  void _handleSocketDisconnected(WebSocketManager socketManager) {
+    if (identical(_socketManager, socketManager)) {
+      _socketManager = null;
+    }
+  }
+
+  void _attachSocketLifecycleHandlers(WebSocketManager socketManager) {
+    socketManager.onOpen = () {
+      _handleSocketOpen(socketManager);
+    };
+    socketManager.onError = (error) {
+      _handleSocketDisconnected(socketManager);
+    };
+    socketManager.onClose = (code, reason) {
+      _handleSocketDisconnected(socketManager);
+    };
+  }
+
+  void _replayActiveRealtimeSubscriptions(WebSocketManager socketManager) {
+    List<MapEntry<String, String>> subscriptions =
+        List<MapEntry<String, String>>.from(
+          _activeRealtimeSubscriptions.entries,
+        );
+
+    for (MapEntry<String, String> subscription in subscriptions) {
+      if (!_activeRealtimeSubscriptions.containsKey(subscription.key)) {
+        continue;
+      }
+      if (socketManager.sendMessage(subscription.value)) {
+        _messageQueue.remove(subscription.key);
+      } else {
+        _queueSocketMessageByKey(subscription.key, subscription.value);
+      }
+    }
+  }
+
+  void _flushQueuedSocketMessages(WebSocketManager socketManager) {
+    List<MapEntry<String, String>> queuedMessages =
+        List<MapEntry<String, String>>.from(_messageQueue.entries);
+
+    for (MapEntry<String, String> queuedMessage in queuedMessages) {
+      if (!_messageQueue.containsKey(queuedMessage.key) ||
+          _activeRealtimeSubscriptions.containsKey(queuedMessage.key)) {
+        continue;
+      }
+      if (socketManager.sendMessage(queuedMessage.value)) {
+        _messageQueue.remove(queuedMessage.key);
+      } else {
+        break;
+      }
     }
   }
 
@@ -156,14 +314,26 @@ class FusabaseOracledb {
   Future<void> preSnapshot() async {
     bool uselongPolling = settings.webExperimentalForceLongPolling ?? true;
 
-    if (!uselongPolling && (_socketManager == null || !_socketManager!.isConnected())) {
-      _socketManager = await createSocketClient(app.auth);
+    if (!uselongPolling &&
+        (_socketManager == null || !_socketManager!.isConnected())) {
+      _socketConnectFuture ??= createSocketClient(app.auth)
+          .then((socketManager) {
+            _socketManager = socketManager;
+          })
+          .whenComplete(() {
+            _socketConnectFuture = null;
+          });
+      await _socketConnectFuture;
     }
   }
 
   /// @nodoc
-  Future<String> getSnapshotToken (http.Client client, String reqUrl,
-   String accessToken, globals.LogLevel logLevel) async {
+  Future<String> getSnapshotToken(
+    http.Client client,
+    String reqUrl,
+    String accessToken,
+    globals.LogLevel logLevel,
+  ) async {
     dynamic response;
     dynamic result;
 
@@ -173,8 +343,7 @@ class FusabaseOracledb {
     }
 
     try {
-      response = await client.get(Uri.parse(reqUrl),
-          headers: headers);
+      response = await client.get(Uri.parse(reqUrl), headers: headers);
       Utils.checkResponse(logLevel, response);
       result = jsonDecode(response.body);
     } catch (e, stacktrace) {
@@ -187,7 +356,10 @@ class FusabaseOracledb {
         errMessage = "$e";
       }
       throw Utils.oracledbErrorHandler(
-          response.statusCode, errMessage, stacktrace);
+        response.statusCode,
+        errMessage,
+        stacktrace,
+      );
     }
     return result["access_token"];
   }
@@ -209,7 +381,13 @@ class FusabaseOracledb {
     String snapToken = "";
     if (token != null && token != "") {
       try {
-        snapToken = await getSnapshotToken(createClient(app),'${app.options.ordsHost}_/baas-services/idm/onprem/${app.options.projectID}/authorizeSnapshot?apiKey=${app.options.appID}', token, app.logLevel);
+        final authPath = app.options.authType == 'idcs' ? 'idcs' : 'onprem';
+        snapToken = await getSnapshotToken(
+          createClient(app),
+          '${app.options.ordsHost}_/baas-services/idm/$authPath/${app.options.projectID}/authorizeSnapshot?apiKey=${app.options.appID}',
+          token,
+          app.logLevel,
+        );
       } catch (e) {
         return null;
       }
@@ -217,30 +395,26 @@ class FusabaseOracledb {
     String host = getHostString(settings);
     _socketManager = WebSocketManager(url: "$host?authToken=$snapToken");
 
-    _socketManager.onOpen = () {
-      for (int i = 0; i<_messageQueue.length; i++) {
-        _socketManager.sendMessage(_messageQueue[i]);
-      }
-    };
+    _attachSocketLifecycleHandlers(_socketManager);
 
     _socketManager.onMessage = (message) async {
       dynamic data = jsonDecode(message);
       if (!data.containsKey("queryId")) {
-        return ;
+        return;
       }
       if (data.containsKey("success") || !data.containsKey("changedData")) {
-        return ;
+        return;
       }
       String dataQueryId = data["queryId"].toString();
 
       if (!_queryIdMap.containsKey(dataQueryId)) {
-        return ; // return because we are not listenting to this query
+        return; // return because we are not listenting to this query
       }
 
       String userLevelQueryId = _queryIdMap[dataQueryId] ?? "";
-      
+
       if (userLevelQueryId == "") {
-        return ;
+        return;
       }
 
       dynamic oldData = await _snapStore.getData(userLevelQueryId, this);
@@ -249,12 +423,14 @@ class FusabaseOracledb {
         // end stream (cleanout)
         _queryIdMap.remove(dataQueryId);
         if (_localQueryIdMap.containsKey(userLevelQueryId)) {
-          for (int i=0;i<_localQueryIdMap[userLevelQueryId]!.length;i++) {
-            _snapshotControllerMap.remove(_localQueryIdMap[userLevelQueryId]![i]);
+          for (int i = 0; i < _localQueryIdMap[userLevelQueryId]!.length; i++) {
+            _snapshotControllerMap.remove(
+              _localQueryIdMap[userLevelQueryId]![i],
+            );
           }
         }
         _localQueryIdMap.remove(userLevelQueryId);
-        return ;
+        return;
       }
 
       String rowId = data["rowId"];
@@ -262,65 +438,72 @@ class FusabaseOracledb {
       String? oid = data["changedData"]["OID"];
       dynamic opr = data["operations"];
       dynamic query = oldData["snap"].query;
-      
+
       changedData.remove("OID");
-      
+
       if (oldData["snap"] is DocumentSnapshot) {
         DocumentSnapshot newSnap;
-        if (opr[opr.length-1] == "DELETE") {
+        if (opr[opr.length - 1] == "DELETE") {
           changedData = oldData["snap"]._data;
         }
         var ver = null;
         var asof = null;
         var lastmod = null;
-        if (changedData!=null && changedData["_metadata"]!=null) {
+        if (changedData != null && changedData["_metadata"] != null) {
           ver = changedData["_metadata"]["etag"];
           asof = changedData["_metadata"]["asof"];
           changedData.remove("_metadata");
         }
-        if (changedData!=null && changedData["LAST_MODIFIED"]!=null) {
+        if (changedData != null && changedData["LAST_MODIFIED"] != null) {
           lastmod = changedData["LAST_MODIFIED"];
           changedData.remove("LAST_MODIFIED");
         }
-        if (changedData!=null && changedData["VERSION"]!=null) {
+        if (changedData != null && changedData["VERSION"] != null) {
           ver = changedData["VERSION"];
           changedData.remove("VERSION");
         }
         if (oldData["type"] == "dualityviewdocument") {
-          DualityViewDocReference<Map<String, dynamic>> newDoc = dualityViewDoc(query.path);
+          DualityViewDocReference<Map<String, dynamic>> newDoc = dualityViewDoc(
+            query.path,
+          );
           Map<String, dynamic> newData = {
-            "DOCUMENT":changedData,
-            "VERSION":ver,
-            "ROWID":rowId,
-            "CREATED":null,
-            "LAST_MODIFIED":lastmod,
-            "SUBCOLLECTION":null,
-            "PARENT_OID":null,
-            "OID":oid,
-            "ASOF":asof
+            "DOCUMENT": changedData,
+            "VERSION": ver,
+            "ROWID": rowId,
+            "CREATED": null,
+            "LAST_MODIFIED": lastmod,
+            "SUBCOLLECTION": null,
+            "PARENT_OID": null,
+            "OID": oid,
+            "ASOF": asof,
           };
-          newSnap = DocumentSnapshot(newData,
-            newDoc, SnapshotMetadata(hasPendingWrites: false, isFromCache: false),
-          rowId);
-
+          newSnap = DocumentSnapshot(
+            newData,
+            newDoc,
+            SnapshotMetadata(hasPendingWrites: false, isFromCache: false),
+            rowId,
+          );
         } else {
           DocumentReference<Map<String, dynamic>> newDoc = doc(query.path);
           Map<String, dynamic> newData = {
-            "DOCUMENT":changedData,
-            "VERSION":ver,
-            "ROWID":rowId,
-            "CREATED":null,
-            "LAST_MODIFIED":lastmod,
-            "SUBCOLLECTION":null,
-            "PARENT_OID":null,
-            "OID":oid,
-            "ASOF":asof
+            "DOCUMENT": changedData,
+            "VERSION": ver,
+            "ROWID": rowId,
+            "CREATED": null,
+            "LAST_MODIFIED": lastmod,
+            "SUBCOLLECTION": null,
+            "PARENT_OID": null,
+            "OID": oid,
+            "ASOF": asof,
           };
-          newSnap = DocumentSnapshot(newData,
-            newDoc, SnapshotMetadata(hasPendingWrites: false, isFromCache: false),
-          rowId);
+          newSnap = DocumentSnapshot(
+            newData,
+            newDoc,
+            SnapshotMetadata(hasPendingWrites: false, isFromCache: false),
+            rowId,
+          );
         }
-       
+
         // now we have the new snapshot ready
         // update cache
         oldData["snap"] = newSnap;
@@ -328,22 +511,21 @@ class FusabaseOracledb {
 
         //run the notifiers
         List<String> localQueryIds = _localQueryIdMap[userLevelQueryId] ?? [];
-        for (int i =0;i<localQueryIds.length;i++) {
+        for (int i = 0; i < localQueryIds.length; i++) {
           dynamic controller = _snapshotControllerMap[localQueryIds[i]];
           controller(newSnap);
         }
-      }
-      else {
+      } else {
         // query level
         query._rt = 1;
 
         QuerySnapshot<dynamic> newSnap;
         QueryDocumentSnapshot qDocSnap;
 
-        if (opr[opr.length-1]=='DELETE') {
+        if (opr[opr.length - 1] == 'DELETE') {
           changedData = null;
           if (oid == null) {
-            for (int i =0;i<oldData["snap"]._docs.length;i++) {
+            for (int i = 0; i < oldData["snap"]._docs.length; i++) {
               if (oldData["snap"]._docs[i].rowID == rowId) {
                 oid = oldData["snap"]._docs[i].id;
                 changedData = oldData["snap"]._docs[i]._data;
@@ -356,101 +538,141 @@ class FusabaseOracledb {
         var ver = null;
         var asof = null;
         var lastmod = null;
-        if (changedData!=null && changedData["_metadata"]!=null) {
+        if (changedData != null && changedData["_metadata"] != null) {
           ver = changedData["_metadata"]["etag"];
           asof = changedData["_metadata"]["asof"];
           changedData.remove("_metadata");
         }
-        if (changedData!=null && changedData["VERSION"]!=null) {
+        if (changedData != null && changedData["VERSION"] != null) {
           ver = changedData["VERSION"];
           changedData.remove("VERSION");
         }
-        if (changedData!=null && changedData["LAST_MODIFIED"]!=null) {
+        if (changedData != null && changedData["LAST_MODIFIED"] != null) {
           lastmod = changedData["LAST_MODIFIED"];
           changedData.remove("LAST_MODIFIED");
         }
 
         if (oldData["type"] == "dualityviewcollection") {
-          DualityViewColReference<Map<String, dynamic>> newCol = dualityViewCollection(query.path);
+          DualityViewColReference<Map<String, dynamic>> newCol =
+              dualityViewCollection(query.path);
           query._helper.dupQuery(newCol, query);
           Map<String, dynamic> newData = {
-            "DOCUMENT":changedData,
-            "VERSION":ver,
-            "ROWID":rowId,
-            "CREATED":null,
-            "LAST_MODIFIED":lastmod,
-            "SUBCOLLECTION":null,
-            "PARENT_OID":null,
-            "OID":oid,
-            "ASOF":asof
+            "DOCUMENT": changedData,
+            "VERSION": ver,
+            "ROWID": rowId,
+            "CREATED": null,
+            "LAST_MODIFIED": lastmod,
+            "SUBCOLLECTION": null,
+            "PARENT_OID": null,
+            "OID": oid,
+            "ASOF": asof,
           };
-          newSnap = QuerySnapshot([], newCol, 
-            SnapshotMetadata(hasPendingWrites: false, isFromCache: false));
-          qDocSnap = QueryDocumentSnapshot(newData, newCol, SnapshotMetadata(hasPendingWrites: false, isFromCache: false), rowId);
-
+          newSnap = QuerySnapshot(
+            [],
+            newCol,
+            SnapshotMetadata(hasPendingWrites: false, isFromCache: false),
+          );
+          qDocSnap = QueryDocumentSnapshot(
+            newData,
+            newCol,
+            SnapshotMetadata(hasPendingWrites: false, isFromCache: false),
+            rowId,
+          );
         } else {
-          CollectionReference<Map<String, dynamic>> newCol = collection(query.path);
+          CollectionReference<Map<String, dynamic>> newCol = collection(
+            query.path,
+          );
           query._helper.dupQuery(newCol, query);
           Map<String, dynamic> newData = {
-            "DOCUMENT":changedData,
-            "VERSION":ver,
-            "ROWID":rowId,
-            "CREATED":null,
-            "LAST_MODIFIED":lastmod,
-            "SUBCOLLECTION":null,
-            "PARENT_OID":null,
-            "OID":oid,
-            "ASOF":asof
+            "DOCUMENT": changedData,
+            "VERSION": ver,
+            "ROWID": rowId,
+            "CREATED": null,
+            "LAST_MODIFIED": lastmod,
+            "SUBCOLLECTION": null,
+            "PARENT_OID": null,
+            "OID": oid,
+            "ASOF": asof,
           };
-          newSnap = QuerySnapshot([], newCol, 
-            SnapshotMetadata(hasPendingWrites: false, isFromCache: false));
-          qDocSnap = QueryDocumentSnapshot(newData, newCol, SnapshotMetadata(hasPendingWrites: false, isFromCache: false), rowId);
+          newSnap = QuerySnapshot(
+            [],
+            newCol,
+            SnapshotMetadata(hasPendingWrites: false, isFromCache: false),
+          );
+          qDocSnap = QueryDocumentSnapshot(
+            newData,
+            newCol,
+            SnapshotMetadata(hasPendingWrites: false, isFromCache: false),
+            rowId,
+          );
         }
 
         List<DocumentChange> docChanges = [];
         List<QueryDocumentSnapshot<dynamic>> docs = oldData["snap"]._docs;
 
         Map<String, int> indexMap = {};
-        for (int i=0;i<docs.length;i++) {
+        for (int i = 0; i < docs.length; i++) {
           indexMap[docs[i].id] = i;
         }
 
-        for (int i=opr.length-1;i>=0;i--) {
+        for (int i = opr.length - 1; i >= 0; i--) {
           if (opr[i] == "INSERT") {
             docs.add(qDocSnap);
-            docChanges.add( DocumentChange(doc: qDocSnap, newIndex: docs.length-1,
-                oldIndex: -1, type: DocumentChangeType.added));
+            docChanges.add(
+              DocumentChange(
+                doc: qDocSnap,
+                newIndex: docs.length - 1,
+                oldIndex: -1,
+                type: DocumentChangeType.added,
+              ),
+            );
           } else if (opr[i] == "UPDATE") {
             docs[indexMap[oid] ?? -1] = qDocSnap;
-            docChanges.add(DocumentChange(doc: qDocSnap, newIndex: indexMap[oid] ?? -1,
-                oldIndex: indexMap[oid] ?? -1, type: DocumentChangeType.modified));
+            docChanges.add(
+              DocumentChange(
+                doc: qDocSnap,
+                newIndex: indexMap[oid] ?? -1,
+                oldIndex: indexMap[oid] ?? -1,
+                type: DocumentChangeType.modified,
+              ),
+            );
           } else if (opr[i] == "DELETE") {
             docs.removeAt(indexMap[oid] ?? -1);
-            docChanges.add(DocumentChange(doc: qDocSnap, newIndex: -1,
-                oldIndex: indexMap[oid] ?? -1, type: DocumentChangeType.removed));
+            docChanges.add(
+              DocumentChange(
+                doc: qDocSnap,
+                newIndex: -1,
+                oldIndex: indexMap[oid] ?? -1,
+                type: DocumentChangeType.removed,
+              ),
+            );
           }
           break;
         }
-        
+
         newSnap._docs = docs;
         newSnap._docChanges = docChanges;
         newSnap._size = docs.length;
-      
+
         oldData["snap"] = newSnap;
         await _snapStore.updateData(oldData);
 
         //run the notifiers
         List<String> localQueryIds = _localQueryIdMap[userLevelQueryId] ?? [];
-        for (int i =0;i<localQueryIds.length;i++) {
+        for (int i = 0; i < localQueryIds.length; i++) {
           dynamic controller = _snapshotControllerMap[localQueryIds[i]];
           controller(copyAsMapSnapshot(newSnap));
         }
       }
-
     };
-    _socketManager.onError = (error) => {};
-    _socketManager.onClose = (code, reason) => {};
-    _socketManager.connect();
+    try {
+      await _socketManager.connect();
+    } catch (e) {
+      return null;
+    }
+    if (!_socketManager.isConnected()) {
+      return null;
+    }
     return _socketManager;
   }
 
@@ -489,11 +711,11 @@ class FusabaseOracledb {
   /// var col = db.collection('users');
   /// ```
   CollectionReference<Map<String, dynamic>> collection(String collectionPath) {
-
     return CollectionReference(
-        helper: QueryHelper(),
-        oracledb: instanceFor(app: app),
-        path: collectionPath);
+      helper: QueryHelper(),
+      oracledb: instanceFor(app: app),
+      path: collectionPath,
+    );
   }
 
   /// Gets a reference to a collection to do bulk update.
@@ -509,8 +731,11 @@ class FusabaseOracledb {
   /// var col = db.updateDocs('users');
   /// ```
   BulkUpdate updateDocs(String collectionPath) {
-
-    return BulkUpdate(helper: QueryHelper(), oracledb: this, path: collectionPath);
+    return BulkUpdate(
+      helper: QueryHelper(),
+      oracledb: this,
+      path: collectionPath,
+    );
   }
 
   /// Creates  a join query.
@@ -526,10 +751,8 @@ class FusabaseOracledb {
   /// query = db.join('userDetails');
   /// ```
   Query join(String name) {
-    Query newQuery =
-        Query(helper: QueryHelper(), oracledb: this, path: name);
-    newQuery._joins
-        .add({"view_name": name});
+    Query newQuery = Query(helper: QueryHelper(), oracledb: this, path: name);
+    newQuery._joins.add({"view_name": name});
 
     return newQuery;
   }
@@ -546,21 +769,18 @@ class FusabaseOracledb {
   /// ```dart
   /// var viewCol = db.dualityViewCollection('userView');
   /// ```
-  DualityViewColReference<Map<String, dynamic>> dualityViewCollection(String name) {
+  DualityViewColReference<Map<String, dynamic>> dualityViewCollection(
+    String name,
+  ) {
     // Change the assertion message
-    assert(
-      name.isNotEmpty,
-      'a collectionPath path must be a non-empty string',
-    );
-    assert(
-      !name.contains('//'),
-      'a collection path must not contain "//"',
-    );
+    assert(name.isNotEmpty, 'a collectionPath path must be a non-empty string');
+    assert(!name.contains('//'), 'a collection path must not contain "//"');
 
     return DualityViewColReference(
-        helper: QueryHelper(),
-        oracledb: instanceFor(app: app),
-        path: name);
+      helper: QueryHelper(),
+      oracledb: instanceFor(app: app),
+      path: name,
+    );
   }
 
   /// Gets a query over all collections with the given name (collection group query).
@@ -576,17 +796,17 @@ class FusabaseOracledb {
   /// var groupQuery = db.collectionGroup('posts');
   /// ```
   Query<Map<String, dynamic>> collectionGroup(String name) {
-    assert(
-      name.isNotEmpty,
-      'a collection path must be a non-empty string',
-    );
+    assert(name.isNotEmpty, 'a collection path must be a non-empty string');
     assert(
       !name.contains('/'),
       'a collection path passed to collectionGroup() cannot contain "/"',
     );
 
     Query<Map<String, dynamic>> newQuery = Query<Map<String, dynamic>>(
-        helper: QueryHelper(), oracledb: this, path: name);
+      helper: QueryHelper(),
+      oracledb: this,
+      path: name,
+    );
 
     newQuery._col_group = name;
     return newQuery;
@@ -616,9 +836,10 @@ class FusabaseOracledb {
     );
 
     return DocumentReference(
-        helper: QueryHelper(),
-        oracledb: instanceFor(app: app),
-        path: documentPath);
+      helper: QueryHelper(),
+      oracledb: instanceFor(app: app),
+      path: documentPath,
+    );
   }
 
   /// Gets a reference to a duality view document.
@@ -633,7 +854,9 @@ class FusabaseOracledb {
   /// ```dart
   /// var viewDoc = db.dualityViewDoc('viewName/doc1');
   /// ```
-  DualityViewDocReference<Map<String, dynamic>> dualityViewDoc(String documentPath) {
+  DualityViewDocReference<Map<String, dynamic>> dualityViewDoc(
+    String documentPath,
+  ) {
     // Change the assertion message
     assert(
       documentPath.isNotEmpty,
@@ -645,9 +868,10 @@ class FusabaseOracledb {
     );
 
     return DualityViewDocReference(
-        helper: QueryHelper(),
-        oracledb: instanceFor(app: app),
-        path: documentPath);
+      helper: QueryHelper(),
+      oracledb: instanceFor(app: app),
+      path: documentPath,
+    );
   }
 
   /// Runs a transaction.
@@ -698,7 +922,10 @@ class FusabaseOracledb {
 
         const int baseDelay = 50;
         const int maxDelay = 10000;
-        final int delay = min(baseDelay * (1 << (maxAttempts - retry)), maxDelay);
+        final int delay = min(
+          baseDelay * (1 << (maxAttempts - retry)),
+          maxDelay,
+        );
         final double jitter = Random().nextDouble() * delay * 0.5;
         final int waitTime = (delay + jitter).round();
         await Future.delayed(Duration(milliseconds: waitTime));
@@ -767,9 +994,8 @@ class FusabaseOracledb {
   //         newIndex: i,
   //         oldIndex: -1,
   //         type: DocumentChangeType.added));
-      
+
   //   }
-    
 
   //   QuerySnapshot querSnap = QuerySnapshot([], query, SnapshotMetadata(isFromCache:true, hasPendingWrites:false));
   //   querSnap._docs = docs;
@@ -824,9 +1050,8 @@ class FusabaseOracledb {
   //         newIndex: i,
   //         oldIndex: -1,
   //         type: DocumentChangeType.added));
-      
+
   //   }
-    
 
   //   QuerySnapshot querSnap = QuerySnapshot([], query, SnapshotMetadata(isFromCache:true, hasPendingWrites:false));
   //   querSnap._docs = docs;

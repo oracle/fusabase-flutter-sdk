@@ -259,16 +259,28 @@ int? parseToInt(dynamic value) {
 
 /// @nodoc
 Future<String?> getAccessToken(dynamic auth) async {
+  if (auth == null || auth.currentUser == null) {
+    return null;
+  }
+
   String? accessToken;
   try {
-    accessToken =
-        auth.currentUser != null
-            ? await auth.currentUser?.getFUSABASEToken()
-            : null;
+    accessToken = await auth.currentUser?.getFUSABASEToken();
   } catch (e) {
     accessToken = null;
   }
-  return accessToken;
+
+  if (accessToken != null && accessToken.isNotEmpty) {
+    return accessToken;
+  }
+
+  try {
+    accessToken = await auth.currentUser?.getIdToken();
+  } catch (e) {
+    accessToken = null;
+  }
+
+  return accessToken != null && accessToken.isNotEmpty ? accessToken : null;
 }
 
 /// @nodoc
@@ -1244,7 +1256,7 @@ class LoadBundleTaskHelper {
 class Utils {
   static const String _redacted = '[REDACTED]';
   static final RegExp _sensitiveKeyPattern = RegExp(
-    r'(authorization|authz|token|password|passwd|pwd|secret|credential|assertion|code_verifier|refresh_token|access_token|id_token|api[_-]?key|client[_-]?secret|apptrusttoken|appchecktoken)',
+    r'(authorization|authz|token|password|passwd|pwd|secret|credential|assertion|code_verifier|refresh_token|access_token|id_token|api[_-]?key|client[_-]?secret|apptrusttoken)',
     caseSensitive: false,
   );
   static final RegExp _authorizationValuePattern = RegExp(

@@ -28,16 +28,28 @@ part of "../../../storage.dart";
 
 /// @nodoc
 Future<String?> getAccessToken(dynamic auth) async {
+  if (auth == null || auth.currentUser == null) {
+    return null;
+  }
+
   String? accessToken;
   try {
-    accessToken =
-        auth.currentUser != null
-            ? await auth.currentUser?.getFUSABASEToken()
-            : null;
+    accessToken = await auth.currentUser?.getFUSABASEToken();
   } catch (e) {
     accessToken = null;
   }
-  return accessToken;
+
+  if (accessToken != null && accessToken.isNotEmpty) {
+    return accessToken;
+  }
+
+  try {
+    accessToken = await auth.currentUser?.getIdToken();
+  } catch (e) {
+    accessToken = null;
+  }
+
+  return accessToken != null && accessToken.isNotEmpty ? accessToken : null;
 }
 
 /// @nodoc

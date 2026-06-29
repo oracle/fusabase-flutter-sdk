@@ -24,32 +24,43 @@
 //
 //-----------------------------------------------------------------------------
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:html';
 
 /// @nodoc
 class WebSocketManager {
   WebSocket? _socket;
+
   /// @nodoc
   final String url;
 
-/// @nodoc
+  /// @nodoc
   Function()? onOpen;
+
   /// @nodoc
   Function(dynamic message)? onMessage;
+
   /// @nodoc
   Function(Object error)? onError;
+
   /// @nodoc
   Function(int? code, String? reason)? onClose;
 
-/// @nodoc
+  /// @nodoc
   WebSocketManager({required this.url});
 
-/// @nodoc
+  /// @nodoc
   Future<void> connect() async {
+    final completer = Completer<void>();
+    bool opened = false;
     _socket = WebSocket(url);
 
     _socket!.onOpen.listen((event) {
+      opened = true;
+      if (!completer.isCompleted) {
+        completer.complete();
+      }
       if (onOpen != null) onOpen!();
     });
 
@@ -58,15 +69,23 @@ class WebSocketManager {
     });
 
     _socket!.onError.listen((event) {
+      if (!opened && !completer.isCompleted) {
+        completer.complete();
+      }
       if (onError != null) onError!("WebSocket error");
     });
 
     _socket!.onClose.listen((CloseEvent event) {
+      if (!opened && !completer.isCompleted) {
+        completer.complete();
+      }
       if (onClose != null) onClose!(event.code, event.reason);
     });
+
+    await completer.future;
   }
 
-/// @nodoc
+  /// @nodoc
   bool sendMessage(String message) {
     if (_socket != null && _socket!.readyState == WebSocket.OPEN) {
       _socket!.send(message);
@@ -76,19 +95,18 @@ class WebSocketManager {
     }
   }
 
-/// @nodoc
+  /// @nodoc
   bool isConnected() {
     return _socket != null && _socket!.readyState == WebSocket.OPEN;
   }
 
-/// @nodoc
+  /// @nodoc
   bool isClosed() {
     return _socket != null && _socket!.readyState == WebSocket.CLOSED;
   }
 
-/// @nodoc
+  /// @nodoc
   void close() {
     _socket?.close();
   }
-
 }

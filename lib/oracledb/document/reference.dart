@@ -71,18 +71,18 @@ class DocumentReference<T extends Object?> {
   /// Gets the parent collection reference.
   CollectionReference<T> get parent => _parent;
 
-  DocumentReference(
-      {required QueryHelper helper,
-      required FusabaseOracledb oracledb,
-      required String path,
-      dynamic parent_})
-      : _id = "",
-        _helper = helper,
-        _rt = 0,
-        __logLevel = oracledb.app.logLevel,
-        type = "document",
-        _vectorSearch = null,
-        _oracledb = oracledb {
+  DocumentReference({
+    required QueryHelper helper,
+    required FusabaseOracledb oracledb,
+    required String path,
+    dynamic parent_,
+  }) : _id = "",
+       _helper = helper,
+       _rt = 0,
+       __logLevel = oracledb.app.logLevel,
+       type = "document",
+       _vectorSearch = null,
+       _oracledb = oracledb {
     path = path.toString().trim();
     List<String> tokens = path.split('/');
 
@@ -90,7 +90,10 @@ class DocumentReference<T extends Object?> {
 
     if (_id == "") {
       throw Utils.oracledbErrorHandler(
-          400, OracledbErrorMessages.incorrectDocumentId, null);
+        400,
+        OracledbErrorMessages.incorrectDocumentId,
+        null,
+      );
     }
     _path = [];
     if (parent_ != null) {
@@ -102,23 +105,24 @@ class DocumentReference<T extends Object?> {
         _parent = oracledb.collection(tokens.join('/'));
       }
     }
-   
+
     _path = (_parent != null) ? [...(_parent?._path ?? [])] : [];
     _path.add(_id);
 
-    if (_path.length%2 != 0) {
-      throw Utils.oracledbErrorHandler(
-          400, "Incorrect document path.", null);
+    if (_path.length % 2 != 0) {
+      throw Utils.oracledbErrorHandler(400, "Incorrect document path.", null);
     }
 
     if (_parent == null) {
       throw Utils.oracledbErrorHandler(
-          400, OracledbErrorMessages.parentCollectionCannotBeNull, null);
+        400,
+        OracledbErrorMessages.parentCollectionCannotBeNull,
+        null,
+      );
     }
 
     if (_parent is DocumentReference) {
-      throw Utils.oracledbErrorHandler(
-          400, "Parent can't be a document", null);
+      throw Utils.oracledbErrorHandler(400, "Parent can't be a document", null);
     }
   }
 
@@ -137,22 +141,26 @@ class DocumentReference<T extends Object?> {
   /// ```
   Future<void> update(Map<Object, Object?> data, [dynamic transObj]) async {
     if (transObj == null) {
-      transObj = {
-        "name":"",
-        "start":0,
-        "end":0
-      };
-    };
+      transObj = {"name": "", "start": 0, "end": 0};
+    }
+    ;
     FusabaseAuth auth = FusabaseAuth.instanceFor(app: this._oracledb.app);
     dynamic finalData = convertMap(data);
     String? accessToken = await getAccessToken(auth);
 
-    if (checkOracledbApiVersion(_oracledb.app.options, OracledbVersion["VERSION_1"] ?? 1)) {
+    if (checkOracledbApiVersion(
+      _oracledb.app.options,
+      OracledbVersion["VERSION_1"] ?? 1,
+    )) {
       dynamic docData;
       dynamic transData = null;
       if (transObj != null) {
-        transData = {"name": transObj["name"],
-             "start": transObj["start"], "end": 0, "version":transObj["version"]};
+        transData = {
+          "name": transObj["name"],
+          "start": transObj["start"],
+          "end": 0,
+          "version": transObj["version"],
+        };
       }
       try {
         docData = await this.get(null, transData);
@@ -160,20 +168,37 @@ class DocumentReference<T extends Object?> {
           transObj["start"] = 0;
         }
       } catch (e) {
-        throw Utils.oracledbErrorHandler(404, OracledbErrorMessages.noSuchDocument, null);
+        throw Utils.oracledbErrorHandler(
+          404,
+          OracledbErrorMessages.noSuchDocument,
+          null,
+        );
       }
       finalData = updateNestedData(this, docData._data, finalData);
       finalData = parseTimestamp(finalData);
-    } else if (checkOracledbApiVersion(_oracledb.app.options, OracledbVersion["VERSION_2"] ?? 2)) {
+    } else if (checkOracledbApiVersion(
+      _oracledb.app.options,
+      OracledbVersion["VERSION_2"] ?? 2,
+    )) {
       finalData = createPayloadForUpdateVersion2New(this, finalData, false);
       finalData = parseTimestamp(finalData);
       finalData = rearrangeBodyOfVersion2(finalData);
     }
 
-    dynamic result = await _helper.updatedoc(createClient(_oracledb.app), this, finalData,
-        this.__logLevel, accessToken, transObj);
+    dynamic result = await _helper.updatedoc(
+      createClient(_oracledb.app),
+      this,
+      finalData,
+      this.__logLevel,
+      accessToken,
+      transObj,
+    );
     if (result["OID"] == null) {
-      throw Utils.oracledbErrorHandler(500, OracledbErrorMessages.errorFetchingDocumentUpdate, null);
+      throw Utils.oracledbErrorHandler(
+        500,
+        OracledbErrorMessages.errorFetchingDocumentUpdate,
+        null,
+      );
     }
     return;
   }
@@ -191,11 +216,13 @@ class DocumentReference<T extends Object?> {
   /// var subCollection = docRef.collection('orders');
   /// ```
   CollectionReference<Map<String, dynamic>> collection(String collectionPath) {
-    CollectionReference<Map<String, dynamic>> col = CollectionReference<Map<String, dynamic>>(
-        helper: QueryHelper(),
-        oracledb: _oracledb,
-        path: "${_path.join('/')}/$collectionPath",
-        parent_: this);
+    CollectionReference<Map<String, dynamic>> col =
+        CollectionReference<Map<String, dynamic>>(
+          helper: QueryHelper(),
+          oracledb: _oracledb,
+          path: "${_path.join('/')}/$collectionPath",
+          parent_: this,
+        );
     col.toConverter = this.toConverter;
     col.fromConverter = this.fromConverter;
     return col;
@@ -215,17 +242,19 @@ class DocumentReference<T extends Object?> {
   /// ```
   Future<void> delete([dynamic transObj]) async {
     if (transObj == null) {
-      transObj = {
-        "name":"",
-        "start":0,
-        "end":0
-      };
-    };
+      transObj = {"name": "", "start": 0, "end": 0};
+    }
+    ;
     FusabaseAuth auth = FusabaseAuth.instanceFor(app: this._oracledb.app);
     String? accessToken = await getAccessToken(auth);
 
     await _helper.deletedoc(
-        createClient(_oracledb.app), this, this.__logLevel, accessToken, transObj);
+      createClient(_oracledb.app),
+      this,
+      this.__logLevel,
+      accessToken,
+      transObj,
+    );
     return;
   }
 
@@ -248,59 +277,76 @@ class DocumentReference<T extends Object?> {
       data = toConverter(data);
     }
     if (options == null) {
-      options = SetOptions(merge:false);
+      options = SetOptions(merge: false);
     }
     if (transObj == null) {
-      transObj = {
-        "name":"",
-        "start":0,
-        "end":0
-      };
-    };
+      transObj = {"name": "", "start": 0, "end": 0};
+    }
+    ;
     FusabaseAuth auth = FusabaseAuth.instanceFor(app: this._oracledb.app);
     dynamic finalData = convertMap(data as Map<Object, Object?>);
 
     String? accessToken = await getAccessToken(auth);
 
-    if (checkOracledbApiVersion(_oracledb.app.options, OracledbVersion["VERSION_1"] ?? 1)) {
-    if (options != null && (options.merge == true ||
-        (options.mergeFields != null && options.mergeFields!.isNotEmpty))) 
-    {
-      dynamic docData;
-      try {
-        docData = await get(null, {"name": transObj["name"],
-                "start": transObj["start"], "end": 0, "version":transObj["version"]});
-        if (transObj["start"] == 1) {
-          transObj["start"] = 0;
+    if (checkOracledbApiVersion(
+      _oracledb.app.options,
+      OracledbVersion["VERSION_1"] ?? 1,
+    )) {
+      if (options != null &&
+          (options.merge == true ||
+              (options.mergeFields != null &&
+                  options.mergeFields!.isNotEmpty))) {
+        dynamic docData;
+        try {
+          docData = await get(null, {
+            "name": transObj["name"],
+            "start": transObj["start"],
+            "end": 0,
+            "version": transObj["version"],
+          });
+          if (transObj["start"] == 1) {
+            transObj["start"] = 0;
+          }
+        } catch (e) {
+          final error = Exception("No such doc exists!");
+          throw error;
         }
-      } catch (e) {
-        final error = Exception("No such doc exists!");
-        throw error;
+        finalData = updateNestedData(
+          this,
+          docData._data,
+          convertMap(finalData),
+        );
+      } else {
+        finalData = setWholeData(this, {}, convertMap(finalData), false);
       }
-      finalData = updateNestedData(this, docData._data, convertMap(finalData));
-    } else {
-      finalData = setWholeData(this, {}, convertMap(finalData), false);
+      finalData = parseTimestamp(finalData);
+    } else if (checkOracledbApiVersion(
+      _oracledb.app.options,
+      OracledbVersion["VERSION_2"] ?? 2,
+    )) {
+      if (options != null && options.merge == true) {
+        finalData = createPayloadForUpdateVersion2New(
+          this,
+          finalData,
+          options.merge ?? true,
+        );
+      } else {
+        finalData = setWholeData(this, {}, convertMap(finalData), true);
+        finalData = serializeVersion2(this, finalData, false);
+      }
+      finalData = parseTimestamp(finalData);
+      finalData = rearrangeBodyOfVersion2(finalData);
     }
-    finalData = parseTimestamp(finalData);
-  } else if (checkOracledbApiVersion(_oracledb.app.options, OracledbVersion["VERSION_2"] ?? 2)) {
-    if (options!=null && options.merge==true) {
-      finalData = createPayloadForUpdateVersion2New(this, finalData, options.merge ?? true);
-    } else {
-      finalData = setWholeData(this, {}, convertMap(finalData), true);
-      finalData = serializeVersion2(this, finalData, false);
-    }
-    finalData = parseTimestamp(finalData);
-    finalData = rearrangeBodyOfVersion2(finalData);
-  }
 
     dynamic result = await _helper.setdoc(
-        client: createClient(_oracledb.app),
-        docRef: this,
-        data: finalData,
-        logLevel: this.__logLevel,
-        accessToken: accessToken,
-        options: options,
-        transObj: transObj);
+      client: createClient(_oracledb.app),
+      docRef: this,
+      data: finalData,
+      logLevel: this.__logLevel,
+      accessToken: accessToken,
+      options: options,
+      transObj: transObj,
+    );
     if (result["OID"] == null) {
       throw Utils.oracledbErrorHandler(500, "setDoc failed!", null);
     }
@@ -320,52 +366,50 @@ class DocumentReference<T extends Object?> {
   /// ```dart
   /// var snapshot = await docRef.get();
   /// ```
-  Future<DocumentSnapshot<T>> get(
-      [GetOptions? options, dynamic transObj]) async {
-     FusabaseAuth auth = FusabaseAuth.instanceFor(app: this._oracledb.app);
+  Future<DocumentSnapshot<T>> get([
+    GetOptions? options,
+    dynamic transObj,
+  ]) async {
+    FusabaseAuth auth = FusabaseAuth.instanceFor(app: this._oracledb.app);
     String? accessToken = await getAccessToken(auth);
     if (transObj == null) {
-      transObj = {
-        "name":"",
-        "start":0,
-        "end":0
-      };
-    };
+      transObj = {"name": "", "start": 0, "end": 0};
+    }
+    ;
 
     Map<String, dynamic> result;
     try {
-      result = await _helper.get(createClient(_oracledb.app), options, this, __logLevel,
-          accessToken, transObj);
+      result = await _helper.get(
+        createClient(_oracledb.app),
+        options,
+        this,
+        __logLevel,
+        accessToken,
+        transObj,
+      );
     } catch (e) {
       return DocumentSnapshot<T>(
-          {
-            "DOCUMENT": null,
-            "OID": this._id,
-            "VERSION": 0,
-          },
-          this,
-          SnapshotMetadata(
-              hasPendingWrites: false,
-              isFromCache: false),null); // If Path doesn't exist Check it..
-    }
-    if (result["ret"].length==0) {
-      return DocumentSnapshot<T>({
-          "DOCUMENT": null,
-          "OID": this._id,
-          "VERSION": 0,
-        },
+        {"DOCUMENT": null, "OID": this._id, "VERSION": 0},
         this,
-        SnapshotMetadata(
-            hasPendingWrites: false,
-            isFromCache: false), null);
+        SnapshotMetadata(hasPendingWrites: false, isFromCache: false),
+        null,
+      ); // If Path doesn't exist Check it..
+    }
+    if (result["ret"].length == 0) {
+      return DocumentSnapshot<T>(
+        {"DOCUMENT": null, "OID": this._id, "VERSION": 0},
+        this,
+        SnapshotMetadata(hasPendingWrites: false, isFromCache: false),
+        null,
+      );
     }
 
     return DocumentSnapshot<T>(
-        result["ret"][0]["osons"],
-        this,
-        SnapshotMetadata(
-            hasPendingWrites: false,
-            isFromCache: false), result["ret"][0]["brid"]); // If Path doesn't exist Check it..
+      result["ret"][0]["osons"],
+      this,
+      SnapshotMetadata(hasPendingWrites: false, isFromCache: false),
+      result["ret"][0]["brid"],
+    ); // If Path doesn't exist Check it..
   }
 
   /// Applies converters to the document reference.
@@ -385,7 +429,11 @@ class DocumentReference<T extends Object?> {
     required FromOracledb<R> fromOracledb,
     required ToOracledb<R> toOracledb,
   }) {
-    DocumentReference<R> doc = DocumentReference<R> (helper:QueryHelper(),oracledb:this.oracledb,path:this.path);
+    DocumentReference<R> doc = DocumentReference<R>(
+      helper: QueryHelper(),
+      oracledb: this.oracledb,
+      path: this.path,
+    );
     doc.fromConverter = fromOracledb;
     doc.toConverter = toOracledb;
     return doc;
@@ -404,14 +452,17 @@ class DocumentReference<T extends Object?> {
   /// ```dart
   /// docRef.snapshots().listen((snapshot) { /* handle snapshot */ });
   /// ```
-  Stream<DocumentSnapshot<T>> snapshots({bool includeMetadataChanges = false
-  , ListenSource source = ListenSource.defaultSource}) {
+  Stream<DocumentSnapshot<T>> snapshots({
+    bool includeMetadataChanges = false,
+    ListenSource source = ListenSource.defaultSource,
+  }) {
     late StreamController<DocumentSnapshot<T>> controller;
     this._rt = 1;
     var lastDocUpdate = null;
     Timer? _pollingTimer;
 
-    bool uselongPolling = _oracledb.settings.webExperimentalForceLongPolling ?? true;
+    bool uselongPolling =
+        _oracledb.settings.webExperimentalForceLongPolling ?? true;
     if (_oracledb.settings.webExperimentalForceLongPolling ?? true) {
       uselongPolling = true;
     }
@@ -419,7 +470,6 @@ class DocumentReference<T extends Object?> {
     //uselongPolling = false;
 
     if (uselongPolling) {
-
       controller = StreamController<DocumentSnapshot<T>>.broadcast(
         onListen: () async {
           controller.add(await this.get());
@@ -429,40 +479,43 @@ class DocumentReference<T extends Object?> {
         },
       );
 
-      Future<void> longPolling () async {
+      final pollingInterval = _safeLongPollingInterval(_oracledb.settings);
+
+      Future<void> longPolling() async {
         DocumentSnapshot newSnap = await this.get();
         var newVer = null;
-        if (newSnap._otherMetadata["ASOF"]!=null) {
+        if (newSnap._otherMetadata["ASOF"] != null) {
           newVer = BigInt.from(newSnap._otherMetadata["ASOF"]);
         } else {
           newVer = newSnap._otherMetadata["VERSION"];
         }
-        if (lastDocUpdate == null 
-          || (newVer!=null && lastDocUpdate < newVer)) {
+        if (lastDocUpdate == null ||
+            (newVer != null && lastDocUpdate < newVer)) {
           controller.add(newSnap as DocumentSnapshot<T>);
         }
 
         lastDocUpdate = newVer;
       }
 
-      _pollingTimer = Timer(Duration(seconds: oracledb.settings.webExperimentalLongPollingOptions?.timeoutDuration?.inSeconds ?? 29), () {
+      _pollingTimer = Timer(pollingInterval, () {
         longPolling();
 
-        _pollingTimer = Timer.periodic(Duration(seconds: oracledb.settings.webExperimentalLongPollingOptions?.timeoutDuration?.inSeconds ?? 29), (Timer timer) {
-            longPolling();
-          });
+        _pollingTimer = Timer.periodic(pollingInterval, (Timer timer) {
+          longPolling();
+        });
       });
 
       return controller.stream;
-    }
-    else {
+    } else {
+      bool isCancelled = false;
+      bool hasRegisteredRealtimeListener = false;
       FusabaseAuth auth = FusabaseAuth.instanceFor(app: _oracledb.app);
       var email = auth.currentUser?.email ?? "";
       var userLvlPayload = {
         "path": this._path,
         "conditions": [],
         "explicitOrder": [],
-        "access_token": email
+        "access_token": email,
       };
 
       // this query id is used to store in the cache (user level)
@@ -472,7 +525,7 @@ class DocumentReference<T extends Object?> {
       var socketPayload = {
         "path": this._path,
         "conditions": [],
-        "explicitOrder": []
+        "explicitOrder": [],
       };
 
       // this query id is used to register listener (common for each query)
@@ -482,76 +535,92 @@ class DocumentReference<T extends Object?> {
       // this query id is used to store the notifiers (unique each time)
       String localQueryId = generateRandomHash();
 
-      Future<DocumentSnapshot<T>> firstPoll () async {
-      dynamic oldData = await oracledb._snapStore.getData(queryId, oracledb);
+      Future<DocumentSnapshot<T>> firstPoll() async {
+        dynamic oldData = await oracledb._snapStore.getData(queryId, oracledb);
 
-      DocumentSnapshot newSnap = await get();
+        DocumentSnapshot newSnap = await get();
 
-      if (oldData == null) {
-        //first snapshot
-        await oracledb._snapStore.insertData({
-          "queryId":queryId,
-          "snap":newSnap,
-          "type":"document",
-          "path":path
-        });
-      } else {
-        await oracledb._snapStore.updateData({
-          "queryId":queryId,
-          "snap":newSnap,
-          "type":"document",
-          "path":path
-        });
+        if (oldData == null) {
+          //first snapshot
+          await oracledb._snapStore.insertData({
+            "queryId": queryId,
+            "snap": newSnap,
+            "type": "document",
+            "path": path,
+          });
+        } else {
+          await oracledb._snapStore.updateData({
+            "queryId": queryId,
+            "snap": newSnap,
+            "type": "document",
+            "path": path,
+          });
+        }
+        return newSnap as DocumentSnapshot<T>;
       }
-      return newSnap as DocumentSnapshot<T>;
-    }
+
+      dynamic payload = {
+        "queryId": queryIdSocketInt,
+        "status": 1,
+        "payload": socketPayload,
+      };
+
+      void addToController(dynamic snap) {
+        if (!controller.isClosed) {
+          controller.add(snap as DocumentSnapshot<T>);
+        }
+      }
 
       controller = StreamController<DocumentSnapshot<T>>.broadcast(
         onListen: () async {
+          isCancelled = false;
           await _oracledb.preSnapshot();
+          if (isCancelled) {
+            return;
+          }
+          _oracledb._queryIdMap[queryIdSocket] = queryId;
+          List<String> localQueryIds = _oracledb._localQueryIdMap.putIfAbsent(
+            queryId,
+            () => [],
+          );
+          if (!localQueryIds.contains(localQueryId)) {
+            localQueryIds.add(localQueryId);
+          }
+          _oracledb._snapshotControllerMap[localQueryId] = addToController;
+          hasRegisteredRealtimeListener = true;
+          _oracledb.sendMessageSocket(payload);
           dynamic fsnap = await firstPoll();
-          controller.add(fsnap);
+          if (!isCancelled && !controller.isClosed) {
+            controller.add(fsnap);
+          }
         },
         onCancel: () {
+          isCancelled = true;
+          if (!hasRegisteredRealtimeListener) {
+            return;
+          }
+          hasRegisteredRealtimeListener = false;
           if (_oracledb._snapshotControllerMap.containsKey(localQueryId)) {
             _oracledb._snapshotControllerMap.remove(localQueryId);
           }
-          if (_oracledb._localQueryIdMap.containsKey(queryId) && _oracledb._localQueryIdMap[queryId]!.contains(localQueryId)) {
+          if (_oracledb._localQueryIdMap.containsKey(queryId) &&
+              _oracledb._localQueryIdMap[queryId]!.contains(localQueryId)) {
             _oracledb._localQueryIdMap[queryId]?.remove(localQueryId);
           }
-          if (_oracledb._localQueryIdMap[queryId]!.isEmpty) {
+          if (!_oracledb._localQueryIdMap.containsKey(queryId) ||
+              _oracledb._localQueryIdMap[queryId]!.isEmpty) {
             _oracledb._localQueryIdMap.remove(queryId);
             _oracledb._queryIdMap.remove(queryIdSocket);
             dynamic unsubPayload = {
               "queryId": queryIdSocketInt,
               "status": 0,
-              "payload": socketPayload
+              "payload": socketPayload,
             };
             _oracledb.sendMessageSocket(unsubPayload);
           }
         },
       );
 
-      // use web socket
-      dynamic payload = {
-        "queryId": queryIdSocketInt,
-        "status": 1,
-        "payload": socketPayload
-      };
-      _oracledb.sendMessageSocket(payload);
-      _oracledb._queryIdMap[queryIdSocket] = queryId;
-      if (_oracledb._localQueryIdMap.containsKey(queryId)) {
-        _oracledb._localQueryIdMap[queryId]?.add(localQueryId);
-      } else {
-        _oracledb._localQueryIdMap[queryId] = [localQueryId];
-      }
-
-      void addToController (dynamic snap) {
-        controller.add(snap as DocumentSnapshot<T>);
-      }
-
-      _oracledb._snapshotControllerMap[localQueryId] = addToController;
-        
       return controller.stream;
     }
   }

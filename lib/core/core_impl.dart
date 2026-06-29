@@ -44,18 +44,97 @@ bool _isAppTrustAttestEndpoint(String url) {
   return RegExp(r'/_/baas-services/appcheck/[^/]+/attest(\?|$)').hasMatch(url);
 }
 
-bool _shouldAttachAppTrustHeader(Uri uri) {
+bool _shouldAttachAppTrustHeader(Uri uri, FusabaseApp app) {
   if (!kIsWeb) {
     return false;
   }
-  final url = uri.toString();
-  if (!url.contains('/_/baas-services/')) {
+  if (!_requestMatchesApp(uri, app)) {
     return false;
   }
-  if (_isAppTrustAttestEndpoint(url)) {
+  if (_isAppTrustAttestEndpoint(uri.toString())) {
     return false;
   }
   return true;
+}
+
+bool _requestMatchesApp(Uri uri, FusabaseApp app) {
+  final appUri = Uri.tryParse(app.options.ordsHost);
+  if (appUri == null || appUri.scheme.isEmpty || appUri.host.isEmpty) {
+    return false;
+  }
+
+  if (!_hasSameOrigin(uri, appUri)) {
+    return false;
+  }
+
+  final appPathSegments = _normalizedPathSegments(appUri);
+  final requestPathSegments = _normalizedPathSegments(uri);
+  if (!_segmentsStartWith(requestPathSegments, appPathSegments)) {
+    return false;
+  }
+
+  final start = appPathSegments.length;
+  if (requestPathSegments.length <= start + 2 ||
+      requestPathSegments[start] != '_' ||
+      requestPathSegments[start + 1] != 'baas-services') {
+    return false;
+  }
+
+  if (!_hasMatchingProjectSegment(
+    requestPathSegments,
+    start + 2,
+    app.options.projectID,
+  )) {
+    return false;
+  }
+
+  final apiKeys = uri.queryParametersAll['apiKey'];
+  return apiKeys == null ||
+      apiKeys.isEmpty ||
+      apiKeys.every((apiKey) => apiKey == app.options.appID);
+}
+
+List<String> _normalizedPathSegments(Uri uri) {
+  return uri.pathSegments.where((segment) => segment.isNotEmpty).toList();
+}
+
+bool _hasSameOrigin(Uri uri, Uri other) {
+  return uri.scheme.toLowerCase() == other.scheme.toLowerCase() &&
+      uri.host.toLowerCase() == other.host.toLowerCase() &&
+      uri.port == other.port;
+}
+
+bool _segmentsStartWith(List<String> segments, List<String> prefix) {
+  if (segments.length < prefix.length) {
+    return false;
+  }
+  for (var i = 0; i < prefix.length; i++) {
+    if (segments[i] != prefix[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool _hasMatchingProjectSegment(
+  List<String> pathSegments,
+  int serviceStart,
+  String projectID,
+) {
+  if (pathSegments.length <= serviceStart) {
+    return false;
+  }
+
+  final service = pathSegments[serviceStart];
+  var projectOffset = 1;
+  if (service == 'idm' ||
+      (pathSegments.length > serviceStart + 1 &&
+          pathSegments[serviceStart + 1] == 'par')) {
+    projectOffset = 2;
+  }
+  final projectIndex = serviceStart + projectOffset;
+  return pathSegments.length > projectIndex &&
+      pathSegments[projectIndex] == projectID;
 }
 
 String? _getAppTrustToken(FusabaseApp? app) {
@@ -209,26 +288,6 @@ Future<_BufferedResponse> _bufferResponse(
   );
 }
 
-FusabaseApp? _fallbackApp() {
-  final defaultApp = Fusabase._apps[globals.defaultAppName];
-  for (final value in Fusabase._apps.values) {
-    if (value is FusabaseApp &&
-        (_getAppTrustToken(value) != null ||
-            value.internalAppTrustInstance != null)) {
-      return value;
-    }
-  }
-  if (defaultApp is FusabaseApp) {
-    return defaultApp;
-  }
-  for (final value in Fusabase._apps.values) {
-    if (value is FusabaseApp) {
-      return value;
-    }
-  }
-  return null;
-}
-
 class _FusabaseHttpClient extends http.BaseClient {
   final http.Client _inner;
   final FusabaseApp? _app;
@@ -237,8 +296,8 @@ class _FusabaseHttpClient extends http.BaseClient {
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    final app = _app ?? _fallbackApp();
-    if (app == null || !_shouldAttachAppTrustHeader(request.url)) {
+    final app = _app;
+    if (app == null || !_shouldAttachAppTrustHeader(request.url, app)) {
       return _inner.send(request);
     }
 
@@ -465,17 +524,9 @@ class FusabaseApp {
       storageBucket: options.storageBucket,
       projectID: options.projectID,
       authType: options.authType,
+      authID: options.authID,
+      idcsDomainURL: options.idcsDomainURL,
     );
-
-    if (options.authType == 'idcs') {
-      _config?.idcsConfig = options.idcsConfig;
-    }
-    if (options.authType == 'ldap' ||
-        options.authType == 'base' ||
-        options.authType == 'ldap_s' ||
-        options.authType == 'base_s') {
-      _config?.authID = options.authID;
-    }
   }
 
   /// The internal configuration for this app.
@@ -566,6 +617,32 @@ class FusabaseApp {
 /// The set of integrated products and configuration for an app.
 ///
 class FusabaseOptions {
+  static const int minLongPollingIntervalSeconds = 5;
+  static const int maxLongPollingIntervalSeconds = 300;
+  static const int defaultLongPollingIntervalSeconds = 29;
+
+  static int normalizeLongPollingInterval(dynamic interval) {
+    if (interval is int &&
+        interval >= minLongPollingIntervalSeconds &&
+        interval <= maxLongPollingIntervalSeconds) {
+      return interval;
+    }
+    return defaultLongPollingIntervalSeconds;
+  }
+
+  static Duration normalizeLongPollingDuration(Duration? interval) {
+    if (interval == null) {
+      return const Duration(seconds: defaultLongPollingIntervalSeconds);
+    }
+
+    final seconds = interval.inSeconds;
+    if (interval.inMicroseconds != seconds * Duration.microsecondsPerSecond) {
+      return const Duration(seconds: defaultLongPollingIntervalSeconds);
+    }
+
+    return Duration(seconds: normalizeLongPollingInterval(seconds));
+  }
+
   /// The ORDS host URL.
   final String ordsHost;
 
@@ -599,8 +676,8 @@ class FusabaseOptions {
   /// Optional app trust token.
   String? appTrustToken;
 
-  /// Optional IDCS configuration.
-  Map<String, String>? idcsConfig;
+  /// Optional IDCS domain URL for IDCS logout.
+  String? idcsDomainURL;
 
   /// The Oracle DB version to use.
   int useOracledbVersion;
@@ -608,7 +685,7 @@ class FusabaseOptions {
   /// Web socket config
   bool useSocket;
 
-  /// Logn polling interval
+  /// Long polling interval.
   int longPollingInterval;
 
   /// Upload chunk size
@@ -633,11 +710,13 @@ class FusabaseOptions {
       storageBucket = options["storage_bucket"],
       authType = options["auth_type"].toLowerCase(),
       authID = options["auth_id"],
-      appTrustToken = options["appTrustToken"] ?? options["appCheckToken"],
+      appTrustToken = options["appTrustToken"] ?? options["appTrustToken"],
       useOracledbVersion = options["version"] ?? 2,
-      idcsConfig = options["idcs_config"],
+      idcsDomainURL = options["idcs_domain_url"],
       useSocket = options["use_socket"] ?? false,
-      longPollingInterval = options["long_polling_interval"] ?? 29,
+      longPollingInterval = normalizeLongPollingInterval(
+        options["long_polling_interval"],
+      ),
       chunkSize = options["upload_chunk_size"] ?? 16 * 1024 * 1024,
       maxUploadSize =
           options["max_upload_size"] ??
@@ -648,7 +727,7 @@ class FusabaseOptions {
   /// A string representation of this options instance.
   @override
   String toString() {
-    return '$FusabaseOptions(ordsHost: $ordsHost, appType: $appType, appName: $appName, project:$schema, projectID:$projectID, appId:$appID, objsType:$objsType, storageBucket:$storageBucket, authType:$authType, authID:$authID, hasAppTrustToken:${appTrustToken != null && appTrustToken!.isNotEmpty}, idcsConfig:${idcsConfig.toString()}, chunkSize:$chunkSize, maxUploadSize:$maxUploadSize )';
+    return '$FusabaseOptions(ordsHost: $ordsHost, appType: $appType, appName: $appName, project:$schema, projectID:$projectID, appId:$appID, objsType:$objsType, storageBucket:$storageBucket, authType:$authType, authID:$authID, hasAppTrustToken:${appTrustToken != null && appTrustToken!.isNotEmpty}, idcsDomainURL:$idcsDomainURL, chunkSize:$chunkSize, maxUploadSize:$maxUploadSize )';
   }
 
   /// Test whether [other] is equal to this instance.
@@ -680,8 +759,8 @@ class FusabaseConfig {
   /// Authentication ID.
   String? authID;
 
-  /// IDCS configuration.
-  Map<String, String>? idcsConfig;
+  /// IDCS domain URL for IDCS logout.
+  String? idcsDomainURL;
 
   /// Constructs an [FusabaseConfig].
   ///
@@ -691,14 +770,14 @@ class FusabaseConfig {
   /// - [projectID]
   /// - [authType]
   /// - [authID]
-  /// - [idcsConfig]
+  /// - [idcsDomainURL]
   FusabaseConfig({
     required this.objsType,
     required this.storageBucket,
     required this.projectID,
     required this.authType,
     this.authID,
-    this.idcsConfig,
+    this.idcsDomainURL,
   });
 }
 
@@ -760,7 +839,7 @@ class FusabaseException implements Exception {
 class Utils {
   static const String _redacted = '[REDACTED]';
   static final RegExp _sensitiveKeyPattern = RegExp(
-    r'(authorization|authz|token|password|passwd|pwd|secret|credential|assertion|code_verifier|refresh_token|access_token|id_token|api[_-]?key|client[_-]?secret|apptrusttoken|appchecktoken)',
+    r'(authorization|authz|token|password|passwd|pwd|secret|credential|assertion|code_verifier|refresh_token|access_token|id_token|api[_-]?key|client[_-]?secret|apptrusttoken)',
     caseSensitive: false,
   );
   static final RegExp _authorizationValuePattern = RegExp(

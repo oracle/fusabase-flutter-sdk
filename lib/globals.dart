@@ -26,11 +26,6 @@
 
 library fusabase.globals;
 
-const authenticateRESTEP = "/sso/v1/sdk/authenticate";
-const oauthTokenRESTEP = "/oauth2/v1/token";
-const selfMeRESTEP = "/admin/v1/Me";
-const logoutRESTEP = "/oauth2/v1/userlogout";
-const revokeRefreshTokenRESTEP = "/oauth2/v1/revoke";
 const addRESTEP = "setDocument";
 const getRESTEP_V1 = "v1/runQuery";
 const getRESTEP_V2 = "v2/runQuery";
@@ -51,10 +46,6 @@ const codeVerifierKey = 'redirectCodeVerifier';
 const providerKey = 'redirectProvider';
 const loginKey = 'loginKey';
 const redirectKey = 'redirectInitiated';
-const sendPasswordResetEmail = "/admin/v1/MePasswordResetRequestor";
-const confirmPasswordReset = "/admin/v1/MePasswordResetter";
-const verifyPasswordResetCode = "/admin/v1/UserTokenValidator";
-const updatePasswordHelper = "/admin/v1/MePasswordChanger";
 const getTokenORDS = 'oauth/token';
 const getConfig = "config/initializeapp/";
 
@@ -69,7 +60,7 @@ enum ErrorCode {
   SERVER_ERROR,
   NOT_IMPLEMENT,
   UNAVAILABLE,
-  OPR_NOT_ALLOWED
+  OPR_NOT_ALLOWED,
 }
 
 Map<ErrorCode, int> ErrorMap = {
@@ -81,5 +72,5 @@ Map<ErrorCode, int> ErrorMap = {
   ErrorCode.SERVER_ERROR: 500,
   ErrorCode.NOT_IMPLEMENT: 501,
   ErrorCode.UNAVAILABLE: 502,
-  ErrorCode.OPR_NOT_ALLOWED: 599
+  ErrorCode.OPR_NOT_ALLOWED: 599,
 };

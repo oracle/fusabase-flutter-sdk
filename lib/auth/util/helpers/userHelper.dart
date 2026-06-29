@@ -29,453 +29,150 @@ part of "../../../auth.dart";
 /// @nodoc
 class IDCSUserHelper {
   final FusabaseOptions? options;
-  final String encodedSecret;
 
   dynamic config;
-  FusabaseApp? _app;
+  late final ONPREMUserHelper _delegate;
 
-  globals.LogLevel __logLevel;
-
-  IDCSUserHelper(
-      {required this.options,
-      required this.config,
-      required globals.LogLevel logLevel})
-      : __logLevel = logLevel,
-        encodedSecret = base64.encode(utf8.encode("${config.clientID}:${config.clientSecret}"));
-
-  void _setApp(FusabaseApp app) {
-    _app = app;
+  IDCSUserHelper({
+    required this.options,
+    required this.config,
+    required globals.LogLevel logLevel,
+  }) {
+    _delegate = ONPREMUserHelper(
+      options: options,
+      config: config,
+      logLevel: logLevel,
+    );
   }
 
-  Future<dynamic> refreshAccessToken(
-      {required http.Client client, required String refreshToken}) async {
-    dynamic response;
-    dynamic result;
+  void _setApp(FusabaseApp app) {
+    _delegate._setApp(app);
+  }
 
-    final String reqURL =
-        "${this.config.domainURL}${IDCSConfig.OAUTH_TOKEN_REST_EP}";
-    final headers = <String, String>{
-      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-      "Authorization": "Basic $encodedSecret",
-    };
-    final body =
-        "grant_type=refresh_token&refresh_token=$refreshToken&scope=offline_access";
-    try {
-      response =
-          await client.post(Uri.parse(reqURL), headers: headers, body: body);
-      AuthUtils.checkResponse(this.__logLevel, response);
-      result = json.decode(response.body);
-    } catch (e, stacktrace) {
-      AuthUtils.baasLogger(this.__logLevel, "POST request");
-      AuthUtils.baasTrace(
-          this.__logLevel, reqURL, headers, body, e, stacktrace);
-      String errMessage = "";
-
-      try {
-        errMessage = json.decode(response.body)["message"];
-      } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['refresh the access token']);
-      }
-
-      throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
-    }
-
-    return result;
+  Future<dynamic> refreshAccessToken({
+    required http.Client client,
+    required String refreshToken,
+  }) async {
+    return _delegate.refreshAccessToken(
+      client: client,
+      refreshToken: refreshToken,
+    );
   }
 
   bool vaidateAccessToken(accTok) {
-    if (accTok == null) {
-      return false;
-    }
-    DateTime curr = DateTime.now();
-    DateTime ref = accTok.expirationTime ?? curr;
-
-    if (ref.isBefore(curr)) {
-      return false;
-    }
-    return true;
+    return _delegate.vaidateAccessToken(accTok);
   }
 
   bool vaidateFUSABASEToken(osbTok) {
-    if (osbTok == null) {
-      return false;
-    }
-    DateTime curr = DateTime.now();
-    DateTime ref = osbTok?.expirationTime ?? curr;
-
-    if (ref.isBefore(curr)) {
-      return false;
-    }
-    return true;
+    return _delegate.vaidateFUSABASEToken(osbTok);
   }
 
-  Future<void> updatePasswordHelper(
-      {required http.Client client,
-      required User user,
-      required String newPassword,
-      required String oldPassword}) async {
-    dynamic response;
-    final reqURL =
-        "${this.config.domainURL}${IDCSConfig.UPDATE_PASSWORD_HELPER}";
-    String? idToken = await user.getIdToken();
-    final headers = <String, String>{
-      "Content-Type": "application/scim+json",
-      "Authorization": "Bearer ${idToken}",
-    };
-    final body = json.encode({
-      "password": newPassword,
-      "oldPassword": oldPassword,
-      "schemas": ["urn:ietf:params:scim:schemas:oracle:idcs:MePasswordChanger"]
-    });
-    try {
-      response =
-          await client.put(Uri.parse(reqURL), headers: headers, body: body);
-
-      AuthUtils.checkResponse(this.__logLevel, response);
-    } catch (e, stacktrace) {
-      AuthUtils.baasLogger(this.__logLevel, "PUT request");
-      AuthUtils.baasTrace(
-          this.__logLevel, reqURL, headers, body, e, stacktrace);
-      String errMessage = "";
-
-      try {
-        errMessage = json.decode(response.body)["message"];
-      } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.PASSWORD_UPDATE_FAILED;
-      }
-
-      throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
-    }
+  Future<void> updatePasswordHelper({
+    required http.Client client,
+    required User user,
+    required String newPassword,
+    required String oldPassword,
+  }) async {
+    return _delegate.updatePasswordHelper(
+      client: client,
+      user: user,
+      newPassword: newPassword,
+      oldPassword: oldPassword,
+    );
   }
 
-  Future<dynamic> updateProfileNameHelper(
-      {required http.Client client,
-      required User user,
-      required String displayName}) async {
-    dynamic response;
-    dynamic result;
-    final reqURL = "${this.config.domainURL}${IDCSConfig.SELF_ME_REST_EP}";
-    String? idToken = await user.getIdToken();
-    final headers = <String, String>{
-      "Content-Type": "application/scim+json",
-      "Authorization": "Bearer ${idToken}",
-    };
-    final body = json.encode({
-      "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
-      "Operations": makeNameOperations(user, displayName),
-    });
-    try {
-      response =
-          await client.patch(Uri.parse(reqURL), headers: headers, body: body);
-
-      AuthUtils.checkResponse(this.__logLevel, response);
-      result = json.decode(response.body);
-    } catch (e, stacktrace) {
-      AuthUtils.baasLogger(this.__logLevel, "PATCH request");
-      AuthUtils.baasTrace(
-          this.__logLevel, reqURL, headers, body, e, stacktrace);
-      String errMessage = "";
-
-      try {
-        errMessage = json.decode(response.body)["message"];
-      } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['update the profile name of the user']);
-      }
-
-      throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
-    }
-
-    return result;
+  Future<dynamic> updateProfileNameHelper({
+    required http.Client client,
+    required User user,
+    required String displayName,
+  }) async {
+    return _delegate.updateProfileNameHelper(
+      client: client,
+      user: user,
+      displayName: displayName,
+    );
   }
 
-  Future<dynamic> updatePhoneNumberHelper(
-      {required http.Client client,
-      required User user,
-      required String phoneNumber}) async {
-    dynamic response;
-    dynamic result;
-    final reqURL = "${this.config.domainURL}${IDCSConfig.SELF_ME_REST_EP}";
-    String? idToken = await user.getIdToken();
-    final headers = <String, String>{
-      "Content-Type": "application/scim+json",
-      "Authorization": "Bearer ${idToken}",
-    };
-    final body = json.encode({
-      "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
-      "Operations": makePhoneOperations(user, phoneNumber),
-    });
-    try {
-      response =
-          await client.patch(Uri.parse(reqURL), headers: headers, body: body);
-
-      AuthUtils.checkResponse(this.__logLevel, response);
-      result = json.decode(response.body);
-    } catch (e, stacktrace) {
-      AuthUtils.baasLogger(this.__logLevel, "PATCH request");
-      AuthUtils.baasTrace(
-          this.__logLevel, reqURL, headers, body, e, stacktrace);
-      String errMessage = "";
-
-      try {
-        errMessage = json.decode(response.body)["message"];
-      } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['update the phone number of the user']);
-      }
-
-      throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
-    }
-
-    return result;
+  Future<dynamic> updatePhoneNumberHelper({
+    required http.Client client,
+    required User user,
+    required String phoneNumber,
+  }) async {
+    return _delegate.updatePhoneNumberHelper(
+      client: client,
+      user: user,
+      phoneNumber: phoneNumber,
+    );
   }
 
-  Future<dynamic> updatePhotoURLHelper(
-      {required http.Client client,
-      required User user,
-      required String photoURL}) async {
-    dynamic response;
-    dynamic result;
-    final reqURL = "${this.config.domainURL}${IDCSConfig.SELF_ME_REST_EP}";
-    String? idToken = await user.getIdToken();
-    final headers = <String, String>{
-      "Content-Type": "application/scim+json",
-      "Authorization": "Bearer ${idToken}",
-    };
-    final body = json.encode({
-      "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
-      "Operations": makePhotoOperations(user, photoURL),
-    });
-    try {
-      response =
-          await client.patch(Uri.parse(reqURL), headers: headers, body: body);
-
-      AuthUtils.checkResponse(this.__logLevel, response);
-      result = json.decode(response.body);
-    } catch (e, stacktrace) {
-      AuthUtils.baasLogger(this.__logLevel, "PATCH request");
-      AuthUtils.baasTrace(
-          this.__logLevel, reqURL, headers, body, e, stacktrace);
-      String errMessage = "";
-
-      try {
-        errMessage = json.decode(response.body)["message"];
-      } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['update the photo URL of the user']);
-      }
-
-      throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
-    }
-
-    return result;
+  Future<dynamic> updatePhotoURLHelper({
+    http.Client? client,
+    required User user,
+    required String photoURL,
+  }) async {
+    return _delegate.updatePhotoURLHelper(user: user, photoURL: photoURL);
   }
 
   List<dynamic> makeNameOperations(User user, String displayName) {
-    List<dynamic> operations = [];
-    if (user.displayName != displayName) {
-      operations.add({
-        "op": user.displayName != null
-            ? displayName != null
-                ? "replace"
-                : "remove"
-            : "add",
-        "path": "displayName",
-        "value": displayName,
-      });
-    }
-
-    return operations;
+    return _delegate.makeNameOperations(user, displayName);
   }
 
   List<dynamic> makePhoneOperations(User user, String phoneNumber) {
-    List<dynamic> operations = [];
-    if (user.phoneNumber != phoneNumber) {
-      operations.add({
-        "op": user.phoneNumber != null
-            ? phoneNumber != null
-                ? "replace"
-                : "remove"
-            : "add",
-        "path": "phoneNumbers",
-        "value": [
-          {"value": phoneNumber, "type": "home"}
-        ],
-      });
-    }
-
-    return operations;
+    return _delegate.makePhoneOperations(user, phoneNumber);
   }
 
   List<dynamic> makePhotoOperations(User user, String photoURL) {
-    List<dynamic> operations = [];
-    if (user.photoURL != photoURL) {
-      operations.add({
-        "op": user.photoURL != null
-            ? photoURL != null
-                ? "replace"
-                : "remove"
-            : "add",
-        "path": "photos",
-        "value": [
-          {"value": photoURL, "type": "photo"}
-        ],
-      });
-    }
-
-    return operations;
+    return [];
   }
 
-  Future<dynamic> sendEmailVerificationHelper(
-      {required http.Client client,
-      required User user,
-      required String email,
-      required String id}) async {
-    dynamic response;
-    dynamic result;
-    final reqURL = "${config.domainURL}${IDCSConfig.SEND_EMAIL_VERIFICATION}";
-    String? idToken = await user.getIdToken();
-    final headers = <String, String>{
-      "Content-Type": "application/json",
-      "Authorization": "Bearer ${idToken}"
-    };
-    final body = json.encode({
-      "id": id,
-      "email": email,
-      "schemas": ["urn:ietf:params:scim:schemas:oracle:idcs:MeEmailVerifier"],
-      "meta": {"resourceType": "MeEmailVerifier"}
-    });
-    try {
-      response =
-          await client.put(Uri.parse(reqURL), headers: headers, body: body);
-
-      AuthUtils.checkResponse(__logLevel, response);
-      result = json.decode(response.body);
-    } catch (e, stacktrace) {
-      AuthUtils.baasLogger(__logLevel, "PATCH request");
-      AuthUtils.baasTrace(__logLevel, reqURL, headers, body, e, stacktrace);
-      String errMessage = "";
-
-      try {
-        errMessage = json.decode(response.body)["message"];
-      } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['send verification email']);
-      }
-
-      throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
-    }
-
-    return result;
+  Future<dynamic> sendEmailVerificationHelper({
+    required http.Client client,
+    required User user,
+    required String email,
+    required String id,
+  }) async {
+    return _delegate.sendEmailVerificationHelper(
+      client: client,
+      user: user,
+      email: email,
+      id: id,
+    );
   }
 
-  Future<dynamic> fetchFusabaseToken(
-      {required http.Client client, required User user, required String url}) async {
-    dynamic response;
-    dynamic result;
-    final reqURL = url;
-    final headers = <String, String>{
-      "Content-Type": "application/json"
-    };
-    String? idToken = await user.getIdToken();
-    final body = json.encode({
-      "token": idToken
-    });
-    try {
-      response =
-          await client.post(Uri.parse(reqURL), headers: headers, body: body);
-
-      AuthUtils.checkResponse(__logLevel, response);
-      result = json.decode(response.body);
-    } catch (e, stacktrace) {
-      AuthUtils.baasLogger(__logLevel, "PATCH request");
-      AuthUtils.baasTrace(__logLevel, reqURL, headers, body, e, stacktrace);
-      String errMessage = "";
-
-      try {
-        errMessage = json.decode(response.body)["message"];
-      } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['send verification email']);
-      }
-
-      throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
-    }
-    return result["access_token"];
+  Future<dynamic> fetchFusabaseToken({
+    required http.Client client,
+    required User user,
+    required String url,
+  }) async {
+    return _delegate.fetchFusabaseToken(client: client, user: user, url: url);
   }
 
-  Future<dynamic> linkWithCredentialHelper ({required http.Client client,
-      required User user, required dynamic credential}) async {
-    String errMessage = NOT_IMPLEMENTED_ERROR_IDCS;
-    throw AuthUtils.authErrorHandler(
-        status: globals.ErrorMap[globals.ErrorCode.NOT_IMPLEMENT] ?? 999,
-        message: errMessage,
-        authType: config.authType.toUpperCase());
+  Future<dynamic> linkWithCredentialHelper({
+    required http.Client client,
+    required User user,
+    required dynamic credential,
+  }) async {
+    return _delegate.linkWithCredentialHelper(
+      client: client,
+      user: user,
+      credential: credential,
+    );
   }
 
   Future<dynamic> generatePKCE(dynamic provider) async {
-    dynamic response;
-    final String host = options?.ordsHost ?? "";
-    final String appID = options?.appID.toLowerCase() ?? "";
-    final String method = provider.providerId;
+    return _delegate.generatePKCE(provider);
+  }
 
-    dynamic socialPlugin;
-    if (kIsWeb) {
-      socialPlugin = FusabaseWeb(
-          host: "${host}_/baas-services/idm/idcs/${options?.projectID}/social",
-          queryParameters: {"app_id": appID, "link":"0", "device": "web",
-          "apiKey": options?.appID ?? ""},
-          callbackUrlScheme: 'baasmobile$appID');
-    } else {
-      socialPlugin = FusabaseDartPlugin(
-          host: "${host}_/baas-services/idm/idcs/${options?.projectID}/social",
-          queryParameters: {"app_id": appID, "link":"0", "device": "web",
-          "apiKey": options?.appID ?? ""},
-          callbackUrlScheme: 'baasmobile$appID');
-    }
-
-    try {
-      response = await socialPlugin.generatePKCEVerifiers();
-    } catch (e, stacktrace) {
-      String errMessage = "";
-
-      try {
-        errMessage = jsonDecode(response.body)["error"];
-      } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['generate verifiers']);
-      }
-
-      throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
-    }
-
-    return response;
+  Future<dynamic> getTokensAfterRedirect({
+    required http.Client client,
+    required String code,
+    required String verifier,
+  }) async {
+    return _delegate.getTokensAfterRedirect(
+      client: client,
+      code: code,
+      verifier: verifier,
+    );
   }
 
   Future<dynamic> socialLink(dynamic provider) async {
@@ -487,67 +184,30 @@ class IDCSUserHelper {
   }
 
   Future<dynamic> listenForSuccess(dynamic popupWindow) async {
-    String errMessage = NOT_IMPLEMENTED_ERROR_IDCS;
     throw AuthUtils.authErrorHandler(
-        status: globals.ErrorMap[globals.ErrorCode.NOT_IMPLEMENT] ?? 999,
-        message: errMessage,
-        authType: config.authType.toUpperCase());
+      status: globals.ErrorMap[globals.ErrorCode.NOT_IMPLEMENT] ?? 999,
+      message: AuthErrorMessageTemplates.METHOD_NOT_IMPLEMENTED,
+      authType: config.authType.toUpperCase(),
+    );
   }
 
-  Future<dynamic> unlinkHelper ({required http.Client client, required User user, dynamic providerId}) async {
-    String errMessage = NOT_IMPLEMENTED_ERROR_IDCS;
-    throw AuthUtils.authErrorHandler(
-        status: globals.ErrorMap[globals.ErrorCode.NOT_IMPLEMENT] ?? 999,
-        message: errMessage,
-        authType: config.authType.toUpperCase());
+  Future<dynamic> unlinkHelper({
+    required http.Client client,
+    required User user,
+    dynamic providerId,
+  }) async {
+    return _delegate.unlinkHelper(
+      client: client,
+      user: user,
+      providerId: providerId,
+    );
   }
 
-  
-
-  Future<dynamic> linkWithRedirectHelper(dynamic provider, dynamic pkceResult) async {
-    dynamic response;
-    final String host = options?.ordsHost ?? "";
-    final String appID = options?.appID.toLowerCase() ?? "";
-    final String method = provider.providerId;
-
-    dynamic socialPlugin;
-
-    if (kIsWeb) {
-      socialPlugin = FusabaseWeb(
-          host: "${host}_/baas-services/idm/idcs/${options?.projectID}/social",
-          queryParameters: {"method": method, "app_id": appID, "link":"1", "device": "web",
-          "apiKey": options?.appID ?? ""},
-          callbackUrlScheme: 'baasmobile$appID');
-    } else {
-      throw AuthUtils.authErrorHandler(
-        status: globals.ErrorMap[globals.ErrorCode.NOT_IMPLEMENT] ?? 999,
-        message: AuthErrorMessageTemplates.METHOD_NOT_IMPLEMENTED,
-        authType: config.authType.toUpperCase());
-    }
-
-    String codeVerifier = pkceResult["codeVerifier"];
-    String codeChallenge = pkceResult["codeChallenge"];
-
-    try {
-      response = await socialPlugin.redirectLogin(codeVerifier,
-       codeChallenge);
-    } catch (e, stacktrace) {
-      String errMessage = "";
-
-      try {
-        errMessage = jsonDecode(response.body)["error"];
-      } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['login using the browser']);
-      }
-
-      throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
-    }
-    response["codeVerifier"] = codeVerifier;
-    return response;
+  Future<dynamic> linkWithRedirectHelper(
+    dynamic provider,
+    dynamic pkceResult,
+  ) async {
+    return _delegate.linkWithRedirectHelper(provider, pkceResult);
   }
 }
 
@@ -560,49 +220,68 @@ class ONPREMUserHelper {
 
   globals.LogLevel __logLevel;
 
-  ONPREMUserHelper(
-      {required this.options,
-      required this.config,
-      required globals.LogLevel logLevel})
-      : __logLevel = logLevel;
+  ONPREMUserHelper({
+    required this.options,
+    required this.config,
+    required globals.LogLevel logLevel,
+  }) : __logLevel = logLevel;
 
   void _setApp(FusabaseApp app) {
     _app = app;
   }
 
-  Future<dynamic> refreshAccessToken(
-      {required http.Client client, required String refreshToken}) async {
+  String get _servicePath => config.authType == "idcs" ? "idcs" : "onprem";
+
+  Future<dynamic> refreshAccessToken({
+    required http.Client client,
+    required String refreshToken,
+  }) async {
     dynamic response;
     dynamic result;
 
     final String reqURL =
         "${this.config.domainURL}${ONPREMConfig.AUTHENTICATE_REST_EP}?apiKey=${options?.appID}";
     final headers = <String, String>{};
-    final body = json.encode({"refresh_token": refreshToken, 
-    "grant_type": "refresh_token"});
+    final body = json.encode({
+      "refresh_token": refreshToken,
+      "grant_type": "refresh_token",
+    });
     try {
-      response =
-          await client.post(Uri.parse(reqURL), headers: headers, body: body);
+      response = await client.post(
+        Uri.parse(reqURL),
+        headers: headers,
+        body: body,
+      );
 
       AuthUtils.checkResponse(this.__logLevel, response);
       result = json.decode(response.body);
     } catch (e, stacktrace) {
       AuthUtils.baasLogger(this.__logLevel, "POST request");
       AuthUtils.baasTrace(
-          this.__logLevel, reqURL, headers, body, e, stacktrace);
+        this.__logLevel,
+        reqURL,
+        headers,
+        body,
+        e,
+        stacktrace,
+      );
       String errMessage = "";
 
       try {
         errMessage = json.decode(response.body)["error"];
       } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['refresh the access token']);
+        errMessage = AuthErrorMessageTemplates.format(
+          AuthErrorMessageTemplates.FAILED_REQUEST,
+          ['refresh the access token'],
+        );
       }
 
       throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
+        status: response.statusCode ?? 999,
+        message: errMessage,
+        authType: config.authType.toUpperCase(),
+        stackTrace: stacktrace,
+      );
     }
 
     return result;
@@ -634,32 +313,40 @@ class ONPREMUserHelper {
     return true;
   }
 
-  Future<void> updatePasswordHelper(
-      {required http.Client client,
-      required User user,
-      required String newPassword,
-      required String oldPassword}) async {
+  Future<void> updatePasswordHelper({
+    required http.Client client,
+    required User user,
+    required String newPassword,
+    required String oldPassword,
+  }) async {
     dynamic response;
     final reqURL =
         "${this.config.domainURL}${ONPREMConfig.UPDATE_PASSWORD_HELPER}?apiKey=${options?.appID}";
     String? idToken = await user.getIdToken();
-    final headers = <String, String>{
-      "X-AUTHZ": idToken ?? "",
-    };
+    final headers = <String, String>{"X-AUTHZ": idToken ?? ""};
     final body = json.encode({
       "password": newPassword,
       "oldPassword": oldPassword,
     });
 
     try {
-      response =
-          await client.put(Uri.parse(reqURL), headers: headers, body: body);
+      response = await client.put(
+        Uri.parse(reqURL),
+        headers: headers,
+        body: body,
+      );
 
       AuthUtils.checkResponse(this.__logLevel, response);
     } catch (e, stacktrace) {
       AuthUtils.baasLogger(this.__logLevel, "PUT request");
       AuthUtils.baasTrace(
-          this.__logLevel, reqURL, headers, body, e, stacktrace);
+        this.__logLevel,
+        reqURL,
+        headers,
+        body,
+        e,
+        stacktrace,
+      );
       String errMessage = "";
 
       try {
@@ -669,115 +356,144 @@ class ONPREMUserHelper {
       }
 
       throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
+        status: response.statusCode ?? 999,
+        message: errMessage,
+        authType: config.authType.toUpperCase(),
+        stackTrace: stacktrace,
+      );
     }
   }
 
-  Future<dynamic> updateProfileNameHelper(
-      {required http.Client client,
-      required User user,
-      required String displayName}) async {
+  Future<dynamic> updateProfileNameHelper({
+    required http.Client client,
+    required User user,
+    required String displayName,
+  }) async {
     dynamic response;
     final reqURL =
         "${this.config.domainURL}${ONPREMConfig.UPDATE_PROFILE_HELPER}?apiKey=${options?.appID}";
     String? accessToken = await user.getIdToken();
-    final headers = <String, String>{
-      "X-AUTHZ": accessToken ?? "",
-    };
+    final headers = <String, String>{"X-AUTHZ": accessToken ?? ""};
     final body = json.encode({
       "Operations": makeNameOperations(user, displayName),
     });
 
     try {
-      response =
-          await client.put(Uri.parse(reqURL), headers: headers, body: body);
+      response = await client.put(
+        Uri.parse(reqURL),
+        headers: headers,
+        body: body,
+      );
 
       AuthUtils.checkResponse(this.__logLevel, response);
     } catch (e, stacktrace) {
       AuthUtils.baasLogger(this.__logLevel, "PUT request");
       AuthUtils.baasTrace(
-          this.__logLevel, reqURL, headers, body, e, stacktrace);
+        this.__logLevel,
+        reqURL,
+        headers,
+        body,
+        e,
+        stacktrace,
+      );
       String errMessage = "";
 
       try {
         errMessage = json.decode(response.body)["error"];
       } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['update the profile name of the user']);
+        errMessage = AuthErrorMessageTemplates.format(
+          AuthErrorMessageTemplates.FAILED_REQUEST,
+          ['update the profile name of the user'],
+        );
       }
 
       throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
+        status: response.statusCode ?? 999,
+        message: errMessage,
+        authType: config.authType.toUpperCase(),
+        stackTrace: stacktrace,
+      );
     }
 
     return {"displayName": displayName};
   }
 
-  Future<dynamic> updatePhoneNumberHelper(
-      {required http.Client client,
-      required User user,
-      required String phoneNumber}) async {
+  Future<dynamic> updatePhoneNumberHelper({
+    required http.Client client,
+    required User user,
+    required String phoneNumber,
+  }) async {
     dynamic response;
     final reqURL =
         "${this.config.domainURL}${ONPREMConfig.UPDATE_PROFILE_HELPER}?apiKey=${options?.appID}";
     String? accessToken = await user.getIdToken();
-    final headers = <String, String>{
-      "X-AUTHZ": accessToken ?? "",
-    };
+    final headers = <String, String>{"X-AUTHZ": accessToken ?? ""};
     final body = json.encode({
       "Operations": makePhoneOperations(user, phoneNumber),
     });
 
     try {
-      response =
-          await client.put(Uri.parse(reqURL), headers: headers, body: body);
+      response = await client.put(
+        Uri.parse(reqURL),
+        headers: headers,
+        body: body,
+      );
 
       AuthUtils.checkResponse(this.__logLevel, response);
     } catch (e, stacktrace) {
       AuthUtils.baasLogger(this.__logLevel, "PUT request");
       AuthUtils.baasTrace(
-          this.__logLevel, reqURL, headers, body, e, stacktrace);
+        this.__logLevel,
+        reqURL,
+        headers,
+        body,
+        e,
+        stacktrace,
+      );
       String errMessage = "";
 
       try {
         errMessage = json.decode(response.body)["error"];
       } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['update the phone number of the user']);
+        errMessage = AuthErrorMessageTemplates.format(
+          AuthErrorMessageTemplates.FAILED_REQUEST,
+          ['update the phone number of the user'],
+        );
       }
 
       throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
+        status: response.statusCode ?? 999,
+        message: errMessage,
+        authType: config.authType.toUpperCase(),
+        stackTrace: stacktrace,
+      );
     }
 
     return {"phoneNumber": phoneNumber};
   }
 
-  Future<dynamic> updatePhotoURLHelper(
-      {required User user, required String photoURL}) async {
+  Future<dynamic> updatePhotoURLHelper({
+    required User user,
+    required String photoURL,
+  }) async {
     String errMessage = AuthErrorMessageTemplates.METHOD_NOT_SUPPORTED_ONPREM;
     throw AuthUtils.authErrorHandler(
-        status: globals.ErrorMap[globals.ErrorCode.NOT_IMPLEMENT] ?? 999,
-        message: errMessage,
-        authType: config.authType.toUpperCase());
+      status: globals.ErrorMap[globals.ErrorCode.NOT_IMPLEMENT] ?? 999,
+      message: errMessage,
+      authType: config.authType.toUpperCase(),
+    );
   }
 
   List<dynamic> makeNameOperations(User user, String displayName) {
     List<dynamic> operations = [];
     if (user.displayName != displayName) {
       operations.add({
-        "op": user.displayName != null
-            ? displayName != null
-                ? "replace"
-                : "replace"
-            : "add",
+        "op":
+            user.displayName != null
+                ? displayName != null
+                    ? "replace"
+                    : "replace"
+                : "add",
         "path": "displayName",
         "value": displayName,
       });
@@ -790,11 +506,12 @@ class ONPREMUserHelper {
     List<dynamic> operations = [];
     if (user.phoneNumber != phoneNumber) {
       operations.add({
-        "op": user.phoneNumber != null
-            ? phoneNumber != null
-                ? "replace"
-                : "replace"
-            : "add",
+        "op":
+            user.phoneNumber != null
+                ? phoneNumber != null
+                    ? "replace"
+                    : "replace"
+                : "add",
         "path": "phoneNumber",
         "value": phoneNumber,
       });
@@ -803,11 +520,12 @@ class ONPREMUserHelper {
     return operations;
   }
 
-  Future<dynamic> sendEmailVerificationHelper(
-      {required http.Client client,
-      required User user,
-      required String email,
-      required String id}) async {
+  Future<dynamic> sendEmailVerificationHelper({
+    required http.Client client,
+    required User user,
+    required String email,
+    required String id,
+  }) async {
     dynamic response;
     dynamic result;
     final reqURL =
@@ -815,7 +533,7 @@ class ONPREMUserHelper {
     String? idToken = await user.getIdToken();
     final headers = <String, String>{
       "Content-Type": "application/json",
-      "Authorization": "Bearer ${idToken}"
+      "Authorization": "Bearer ${idToken}",
     };
 
     try {
@@ -831,33 +549,40 @@ class ONPREMUserHelper {
       try {
         errMessage = json.decode(response.body)["error"];
       } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['send verification email']);
+        errMessage = AuthErrorMessageTemplates.format(
+          AuthErrorMessageTemplates.FAILED_REQUEST,
+          ['send verification email'],
+        );
       }
 
       throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
+        status: response.statusCode ?? 999,
+        message: errMessage,
+        authType: config.authType.toUpperCase(),
+        stackTrace: stacktrace,
+      );
     }
 
     return result;
   }
 
-  Future<dynamic> fetchFusabaseToken(
-      {required http.Client client, required User user, required String url}) async {
+  Future<dynamic> fetchFusabaseToken({
+    required http.Client client,
+    required User user,
+    required String url,
+  }) async {
     String? idToken = await user.getIdToken();
     return idToken;
   }
 
-  Future<dynamic> linkWithCredentialHelper ({required http.Client client,
-      required User user, required dynamic credential}) async {
+  Future<dynamic> linkWithCredentialHelper({
+    required http.Client client,
+    required User user,
+    required dynamic credential,
+  }) async {
     dynamic response;
     dynamic result;
-    Map<String,String> body = {
-      "token":"",
-      "password":""
-    };
+    Map<String, String> body = {"token": "", "password": ""};
     var linkProvider = credential.providerId;
     String? idToken = await user.getIdToken();
     if (credential is EmailAuthCredential) {
@@ -870,12 +595,15 @@ class ONPREMUserHelper {
         "${config.domainURL}${ONPREMConfig.SIGN_IN_WITH_CREDENTIAL}?apiKey=${options?.appID}&method=${linkProvider}&link=1";
     final headers = <String, String>{
       "Content-Type": "application/json",
-      "Authorization": "Bearer ${idToken}"
+      "Authorization": "Bearer ${idToken}",
     };
-    
 
     try {
-      response = await client.post(Uri.parse(reqURL), headers: headers, body: jsonEncode(body));
+      response = await client.post(
+        Uri.parse(reqURL),
+        headers: headers,
+        body: jsonEncode(body),
+      );
       AuthUtils.checkResponse(__logLevel, response);
       result = json.decode(response.body);
     } catch (e, stacktrace) {
@@ -886,14 +614,18 @@ class ONPREMUserHelper {
       try {
         errMessage = json.decode(response.body)["error"];
       } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['link the user']);
+        errMessage = AuthErrorMessageTemplates.format(
+          AuthErrorMessageTemplates.FAILED_REQUEST,
+          ['link the user'],
+        );
       }
 
       throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
+        status: response.statusCode ?? 999,
+        message: errMessage,
+        authType: config.authType.toUpperCase(),
+        stackTrace: stacktrace,
+      );
     }
 
     return result;
@@ -908,16 +640,30 @@ class ONPREMUserHelper {
     dynamic socialPlugin;
     if (kIsWeb) {
       socialPlugin = FusabaseWeb(
-          host: "${host}_/baas-services/idm/onprem/${options?.projectID}/socialidp",
-          queryParameters: {"method": method, "app_id": appID, "link":"0", "device": "web",
-          "apiKey": options?.appID ?? ""},
-          callbackUrlScheme: 'baasmobile$appID');
+        host:
+            "${host}_/baas-services/idm/${_servicePath}/${options?.projectID}/socialidp",
+        queryParameters: {
+          "method": method,
+          "app_id": appID,
+          "link": "0",
+          "device": "web",
+          "apiKey": options?.appID ?? "",
+        },
+        callbackUrlScheme: 'baasmobile$appID',
+      );
     } else {
       socialPlugin = FusabaseDartPlugin(
-          host: "${host}_/baas-services/idm/onprem/${options?.projectID}/socialidp",
-          queryParameters: {"method": method, "app_id": appID, "link":"0", "device": "web",
-          "apiKey": options?.appID ?? ""},
-          callbackUrlScheme: 'baasmobile$appID');
+        host:
+            "${host}_/baas-services/idm/${_servicePath}/${options?.projectID}/socialidp",
+        queryParameters: {
+          "method": method,
+          "app_id": appID,
+          "link": "0",
+          "device": "web",
+          "apiKey": options?.appID ?? "",
+        },
+        callbackUrlScheme: 'baasmobile$appID',
+      );
     }
 
     try {
@@ -928,57 +674,71 @@ class ONPREMUserHelper {
       try {
         errMessage = jsonDecode(response.body)["error"];
       } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['generate verifiers']);
+        errMessage = AuthErrorMessageTemplates.format(
+          AuthErrorMessageTemplates.FAILED_REQUEST,
+          ['generate verifiers'],
+        );
       }
 
       throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
+        status: response.statusCode ?? 999,
+        message: errMessage,
+        authType: config.authType.toUpperCase(),
+        stackTrace: stacktrace,
+      );
     }
 
     return response;
   }
 
-  Future<dynamic> getTokensAfterRedirect(
-      {required http.Client client,
-      required String code,
-      required String verifier}) async {
+  Future<dynamic> getTokensAfterRedirect({
+    required http.Client client,
+    required String code,
+    required String verifier,
+  }) async {
     dynamic response;
     dynamic result;
 
     final reqURL =
-        "${options?.ordsHost}_/baas-services/idm/onprem/${options?.projectID}/${ONPREMConfig.REDIRECT_RESULT}?apiKey=${options?.appID}";
+        "${config.domainURL}${ONPREMConfig.REDIRECT_RESULT}?apiKey=${options?.appID}";
 
-    String data = json.encode({
-      "code_verifier": verifier,
-      "code": code
-    });
+    String data = json.encode({"code_verifier": verifier, "code": code});
     final headers = <String, String>{"Content-Type": "application/json"};
     try {
-      response =
-          await client.post(Uri.parse(reqURL), headers: headers, body: data);
+      response = await client.post(
+        Uri.parse(reqURL),
+        headers: headers,
+        body: data,
+      );
       AuthUtils.checkResponse(this.__logLevel, response);
       result = jsonDecode(response.body);
- 
     } catch (e, stacktrace) {
       AuthUtils.baasLogger(this.__logLevel, "POST request");
       AuthUtils.baasTrace(
-          this.__logLevel, reqURL, headers, data, e, stacktrace);
+        this.__logLevel,
+        reqURL,
+        headers,
+        data,
+        e,
+        stacktrace,
+      );
       String errMessage = "";
 
       try {
         errMessage = jsonDecode(response.body)["error"];
       } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['get tokens after redirect']);
+        errMessage = AuthErrorMessageTemplates.format(
+          AuthErrorMessageTemplates.FAILED_REQUEST,
+          ['get tokens after redirect'],
+        );
       }
 
       throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
+        status: response.statusCode ?? 999,
+        message: errMessage,
+        authType: config.authType.toUpperCase(),
+        stackTrace: stacktrace,
+      );
     }
     return result;
   }
@@ -995,29 +755,40 @@ class ONPREMUserHelper {
 
     if (kIsWeb) {
       socialPlugin = FusabaseWeb(
-          host: "${host}_/baas-services/idm/onprem/${options?.projectID}/socialidp",
-          queryParameters: {"method": provider.providerId, "link":"1", "app_id": appID, "device": "web",
-          "apiKey": options?.appID ?? ""},
-          callbackUrlScheme: 'baasmobile$appID');
+        host:
+            "${host}_/baas-services/idm/${_servicePath}/${options?.projectID}/socialidp",
+        queryParameters: {
+          "method": provider.providerId,
+          "link": "1",
+          "app_id": appID,
+          "device": "web",
+          "apiKey": options?.appID ?? "",
+        },
+        callbackUrlScheme: 'baasmobile$appID',
+      );
     } else {
       socialPlugin = FusabaseDartPlugin(
-          host: "${host}_/baas-services/idm/onprem/${options?.projectID}/socialidp",
-          queryParameters: {
-            "method": provider.providerId,
-            "app_id": appID,
-            "device": "mobile",
-            "link":"1",
-            "apiKey": options?.appID ?? ""
-          },
-          callbackUrlScheme: 'baasmobile$appID');
+        host:
+            "${host}_/baas-services/idm/${_servicePath}/${options?.projectID}/socialidp",
+        queryParameters: {
+          "method": provider.providerId,
+          "app_id": appID,
+          "device": "mobile",
+          "link": "1",
+          "apiKey": options?.appID ?? "",
+        },
+        callbackUrlScheme: 'baasmobile$appID',
+      );
     }
 
     try {
-      response = await socialPlugin.socialLink(codeVerifier,
-       codeChallenge);
+      response = await socialPlugin.socialLink(codeVerifier, codeChallenge);
       if (!kIsWeb) {
-        fResponse = await getTokensAfterRedirect(client:
-          createClient(_app), code: response, verifier: codeVerifier);
+        fResponse = await getTokensAfterRedirect(
+          client: createClient(_app),
+          code: response,
+          verifier: codeVerifier,
+        );
       } else {
         fResponse = response;
       }
@@ -1028,21 +799,28 @@ class ONPREMUserHelper {
       try {
         errMessage = jsonDecode(response.body)["error"];
       } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['login using the browser']);
+        errMessage = AuthErrorMessageTemplates.format(
+          AuthErrorMessageTemplates.FAILED_REQUEST,
+          ['login using the browser'],
+        );
       }
 
       throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
+        status: response.statusCode ?? 999,
+        message: errMessage,
+        authType: config.authType.toUpperCase(),
+        stackTrace: stacktrace,
+      );
     }
 
     return fResponse;
   }
 
-
-  Future<dynamic> unlinkHelper ({required http.Client client, required User user, dynamic providerId}) async {
+  Future<dynamic> unlinkHelper({
+    required http.Client client,
+    required User user,
+    dynamic providerId,
+  }) async {
     dynamic response;
     dynamic result;
     var linkProvider = providerId;
@@ -1054,7 +832,7 @@ class ONPREMUserHelper {
         "${config.domainURL}${ONPREMConfig.SIGN_IN_WITH_CREDENTIAL}?apiKey=${options?.appID}&method=${linkProvider}";
     final headers = <String, String>{
       "Content-Type": "application/json",
-      "Authorization": "Bearer ${idToken}"
+      "Authorization": "Bearer ${idToken}",
     };
 
     try {
@@ -1073,16 +851,20 @@ class ONPREMUserHelper {
       }
 
       throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
+        status: response.statusCode ?? 999,
+        message: errMessage,
+        authType: config.authType.toUpperCase(),
+        stackTrace: stacktrace,
+      );
     }
 
     return result;
   }
 
-  Future<dynamic> linkWithRedirectHelper(dynamic provider, dynamic pkceResult) async {
+  Future<dynamic> linkWithRedirectHelper(
+    dynamic provider,
+    dynamic pkceResult,
+  ) async {
     dynamic response;
     final String host = options?.ordsHost ?? "";
     final String appID = options?.appID.toLowerCase() ?? "";
@@ -1092,37 +874,48 @@ class ONPREMUserHelper {
 
     if (kIsWeb) {
       socialPlugin = FusabaseWeb(
-          host: "${host}_/baas-services/idm/onprem/${options?.projectID}/socialidp",
-          queryParameters: {"method": method, "app_id": appID, "link":"1", "device": "web",
-          "apiKey": options?.appID ?? ""},
-          callbackUrlScheme: 'baasmobile$appID');
+        host:
+            "${host}_/baas-services/idm/${_servicePath}/${options?.projectID}/socialidp",
+        queryParameters: {
+          "method": method,
+          "app_id": appID,
+          "link": "1",
+          "device": "web",
+          "apiKey": options?.appID ?? "",
+        },
+        callbackUrlScheme: 'baasmobile$appID',
+      );
     } else {
       throw AuthUtils.authErrorHandler(
         status: globals.ErrorMap[globals.ErrorCode.NOT_IMPLEMENT] ?? 999,
         message: AuthErrorMessageTemplates.METHOD_NOT_IMPLEMENTED,
-        authType: config.authType.toUpperCase());
+        authType: config.authType.toUpperCase(),
+      );
     }
 
     String codeVerifier = pkceResult["codeVerifier"];
     String codeChallenge = pkceResult["codeChallenge"];
 
     try {
-      response = await socialPlugin.redirectLogin(codeVerifier,
-       codeChallenge);
+      response = await socialPlugin.redirectLogin(codeVerifier, codeChallenge);
     } catch (e, stacktrace) {
       String errMessage = "";
 
       try {
         errMessage = jsonDecode(response.body)["error"];
       } catch (jsonErr) {
-        errMessage = AuthErrorMessageTemplates.format(AuthErrorMessageTemplates.FAILED_REQUEST, ['login using the browser']);
+        errMessage = AuthErrorMessageTemplates.format(
+          AuthErrorMessageTemplates.FAILED_REQUEST,
+          ['login using the browser'],
+        );
       }
 
       throw AuthUtils.authErrorHandler(
-          status: response.statusCode ?? 999,
-          message: errMessage,
-          authType: config.authType.toUpperCase(),
-          stackTrace: stacktrace);
+        status: response.statusCode ?? 999,
+        message: errMessage,
+        authType: config.authType.toUpperCase(),
+        stackTrace: stacktrace,
+      );
     }
     response["codeVerifier"] = codeVerifier;
     return response;

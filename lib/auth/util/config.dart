@@ -26,7 +26,6 @@
 
 part of "../../auth.dart";
 
-
 class Config {
   String authType;
 
@@ -36,7 +35,6 @@ class Config {
 }
 
 class ONPREMConfig extends Config {
-
   String authID;
 
   String domainURL;
@@ -47,7 +45,7 @@ class ONPREMConfig extends Config {
 
   static String UPDATE_PASSWORD_HELPER = "changePassword";
 
-  static String UPDATE_PROFILE_HELPER = "updateProfile";
+  static String UPDATE_PROFILE_HELPER = "profile";
 
   static String REVOKE_REFRESH_TOKEN = "rf/revoke";
 
@@ -63,17 +61,15 @@ class ONPREMConfig extends Config {
 
   static String REDIRECT_RESULT = "redirectResult";
 
-
-  ONPREMConfig(
-      {required String domainURL,
-      required String authID,
-      required String projectID,
-      required String authType})
-      : this.domainURL = domainURL,
-        this.authID = authID,
-        super(authType: authType, projectID: projectID);
+  ONPREMConfig({
+    required String domainURL,
+    required String authID,
+    required String projectID,
+    required String authType,
+  }) : this.domainURL = domainURL,
+       this.authID = authID,
+       super(authType: authType, projectID: projectID);
 }
-
 
 // class ONPREMSRPConfig extends ONPREMConfig {
 //   static String GET_SHARED_KEY = "srp/getsharedkey";
@@ -90,66 +86,30 @@ class ONPREMConfig extends Config {
 // }
 
 /// @nodoc
-class IDCSConfig extends Config {
-  String domainURL;
-
-  String clientID;
-
-  String clientSecret;
-
-  String? selfRegistrationProfile;
-
-  static String AUTHENTICATE_REST_EP = "/sso/v1/sdk/authenticate";
-
-  static String OAUTH_TOKEN_REST_EP = "/oauth2/v1/token";
-
-  static String SELF_ME_REST_EP = "/admin/v1/Me";
-
-  static String FETCH_FUSABASE_TOKEN = "tokenExchange";
+class IDCSConfig extends ONPREMConfig {
+  String idcsDomainURL;
 
   static String LOGOUT_REST_EP = "/oauth2/v1/userlogout";
 
-  static String REVOKE_REFRESH_TOKEN_REST_EP = "/oauth2/v1/revoke";
-
-  static String SEND_PASSWORD_RESET_EMAIL =
-      "/admin/v1/MePasswordResetRequestor";
-
-  static String CONFIRM_PASSWORD_RESET = "/admin/v1/MePasswordResetter";
-
-  static String VERIFY_PASSWORD_RESET_CODE = "/admin/v1/UserTokenValidator";
-
-  static String UPDATE_PASSWORD_HELPER = "/admin/v1/MePasswordChanger";
-
-  static String SEND_EMAIL_VERIFICATION = '/admin/v1/MeEmailVerifier';
-
-  static String REDIRECT_RESULT = 'redirectResult';
-
-  static String ADD_USER_REST_EP = "useradd";
-
-  IDCSConfig(
-      {required this.domainURL,
-      required String projectID,
-      required this.clientID,
-      required this.clientSecret,
-      this.selfRegistrationProfile})
-      : super(authType: "idcs", projectID: projectID) {
-    if (domainURL.isEmpty) {
+  IDCSConfig({
+    required String domainURL,
+    required String authID,
+    required String projectID,
+    required String authType,
+    required String idcsDomainURL,
+  }) : idcsDomainURL = idcsDomainURL.replaceAll(RegExp(r'/+$'), ''),
+       super(
+         domainURL: domainURL,
+         authID: authID,
+         projectID: projectID,
+         authType: authType,
+       ) {
+    if (this.idcsDomainURL.isEmpty) {
       throw AuthUtils.authErrorHandler(
-          status: globals.ErrorMap[globals.ErrorCode.INVALID_ARGS] ?? 999,
-          message: "Domain URL is not provided.",
-          authType: "IDCS");
-    }
-    if (clientID.isEmpty) {
-      throw AuthUtils.authErrorHandler(
-          status: globals.ErrorMap[globals.ErrorCode.INVALID_ARGS] ?? 999,
-          message: "Client ID is not provided.",
-          authType: "IDCS");
-    }
-    if (clientSecret.isEmpty) {
-      throw AuthUtils.authErrorHandler(
-          status: globals.ErrorMap[globals.ErrorCode.INVALID_ARGS] ?? 999,
-          message: "Client Secret is not provided.",
-          authType: "IDCS");
+        status: globals.ErrorMap[globals.ErrorCode.INVALID_ARGS] ?? 999,
+        message: "IDCS domain URL is not provided.",
+        authType: "IDCS",
+      );
     }
   }
 }
