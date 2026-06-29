@@ -29,25 +29,25 @@ part of "../../auth.dart";
 /// {@template persistence}
 /// Types of persistence for auth state.
 /// {@endtemplate}
-enum Persistence { 
+enum Persistence {
   /// Local persistence.
-  LOCAL, 
+  LOCAL,
 
   /// Indexed DB persistence.
-  INDEXED_DB, 
+  INDEXED_DB,
 
   /// Session persistence.
-  SESSION, 
+  SESSION,
 
   /// No persistence.
-  NONE 
+  NONE,
 }
 
 /// {@template action_code_settings}
 /// Settings for action codes like email verification or password reset.
 ///
 /// This class configures how action codes are handled.
-/// 
+///
 /// {@endtemplate}
 class ActionCodeSettings {
   /// Android package name.
@@ -103,10 +103,7 @@ class ActionCodeSettings {
   /// Returns a map representation.
   Map<String, dynamic> asMap() {
     return <String, dynamic>{
-      if (iOSBundleId != null)
-        'iOS': {
-          'bundleId': iOSBundleId,
-        },
+      if (iOSBundleId != null) 'iOS': {'bundleId': iOSBundleId},
       'dynamicLinkDomain': dynamicLinkDomain,
       'url': url,
       'handleCodeInApp': handleCodeInApp,
@@ -115,7 +112,7 @@ class ActionCodeSettings {
           'packageName': androidPackageName,
           'minimumVersion': androidMinimumVersion,
           'installApp': androidInstallApp,
-        }
+        },
     };
   }
 
@@ -128,7 +125,7 @@ class ActionCodeSettings {
 
 /// {@template user_credential}
 /// Stores user's credential after sign-in.
-/// 
+///
 /// {@endtemplate}
 class UserCredential {
   /// The user.
@@ -147,8 +144,8 @@ class UserCredential {
   /// final cred = UserCredential(user: myUser, credential: myCred);
   /// ```
   UserCredential({User? user, AuthCredential? credential})
-      : _user = user,
-        _credential = credential;
+    : _user = user,
+      _credential = credential;
 
   /// Gets the user.
   User? get user => this._user;
@@ -167,7 +164,7 @@ class UserCredential {
 
 /// {@template user_metadata}
 /// Stores user's metadata like creation and last sign-in times.
-/// 
+///
 /// {@endtemplate}
 class UserMetadata {
   /// Creation timestamp.
@@ -202,7 +199,7 @@ class UserMetadata {
 
 /// {@template user_info}
 /// Stores user information from providers.
-/// 
+///
 /// {@endtemplate}
 class UserInfo {
   /// Display name.
@@ -232,12 +229,12 @@ class UserInfo {
   /// final info = UserInfo({'uid': '123', 'email': 'user@example.com'});
   /// ```
   UserInfo(Map<dynamic, dynamic> data)
-      : _uid = data["uid"],
-        _displayName = data["displayName"],
-        _email = data["email"],
-        _phoneNumber = data["phoneNumber"],
-        _photoURL = data["photoURL"],
-        _providerId = data["providerId"];
+    : _uid = data["uid"],
+      _displayName = data["displayName"],
+      _email = data["email"],
+      _phoneNumber = data["phoneNumber"],
+      _photoURL = data["photoURL"],
+      _providerId = data["providerId"];
 
   /// Gets the display name.
   String? get displayName => _displayName;
@@ -268,7 +265,7 @@ class UserInfo {
 /// Represents a user.
 ///
 /// This class holds user data and provides methods to update profile, password, etc.
-/// 
+///
 /// {@endtemplate}
 class User {
   /// Display name.
@@ -342,53 +339,60 @@ class User {
     required IdTokenResult accessToken,
     required refreshToken,
     required FusabaseAuth auth,
-  })  : _auth = auth,
-        _refreshToken = refreshToken,
-        _accessToken = accessToken,
-        _fusabaseToken = null,
-        __logLevel = auth.app.logLevel,
-        _ocid = user["ocid"],
-        _schemas = user["schemas"],
-        _phoneNumber = user["phoneNumbers"] != null
-            ? user["phoneNumbers"][0]["value"]
-            : null,
-        _photoURL = user["photos"] != null ? user["photos"][0]["value"] : null,
-        _displayName = user["displayName"],
-        _metadata = UserMetadata(parseTimestampString(user["meta"]["created"]),
-            parseTimestampString(user["meta"]["lastSignIn"])),
-        _providerData = [
-          UserInfo(<dynamic, dynamic>{
-            "uid": user["id"],
-            "displayName": user["displayName"],
-            "email": user["emails"][0]["value"],
-            "phoneNumber": user["phoneNumbers"] != null
-                ? user["phoneNumbers"][0]["value"]
-                : null,
-            "photoURL":
-                user["photos"] != null ? user["photos"][0]["value"] : null,
-            "providerId": user["idp_name"]
-          })
-        ],
-        _email = user["emails"][0]["value"], // Look at this
-        _uid = user["id"],
-        _isAnonymous = false,
-        _options = auth.options,
-        _userHelper = auth.config.authType == 'idcs'
-            ? IDCSUserHelper(
-                options: auth.options,
-                config: auth.config,
-                logLevel: auth.app.logLevel)
-            // : (auth.config.authType == "base_s" ||
-            //         auth.config.authType == "ldap_s")
-            //     ? ONPREMSRPUserHelper(
-            //         options: auth.options,
-            //         config: auth.config,
-            //         accessToken: IdTokenResult(token: accessToken.token),
-            //         logLevel: auth.app.logLevel)
-                : ONPREMUserHelper(
-                    options: auth.options,
-                    config: auth.config,
-                    logLevel: auth.app.logLevel) {
+  }) : _auth = auth,
+       _refreshToken = refreshToken,
+       _accessToken = accessToken,
+       _fusabaseToken = null,
+       __logLevel = auth.app.logLevel,
+       _ocid = user["ocid"],
+       _schemas = user["schemas"],
+       _phoneNumber =
+           user["phoneNumbers"] != null
+               ? user["phoneNumbers"][0]["value"]
+               : null,
+       _photoURL = user["photos"] != null ? user["photos"][0]["value"] : null,
+       _displayName = user["displayName"],
+       _metadata = UserMetadata(
+         parseTimestampString(user["meta"]["created"]),
+         parseTimestampString(user["meta"]["lastSignIn"]),
+       ),
+       _providerData = [
+         UserInfo(<dynamic, dynamic>{
+           "uid": user["id"],
+           "displayName": user["displayName"],
+           "email": user["emails"][0]["value"],
+           "phoneNumber":
+               user["phoneNumbers"] != null
+                   ? user["phoneNumbers"][0]["value"]
+                   : null,
+           "photoURL":
+               user["photos"] != null ? user["photos"][0]["value"] : null,
+           "providerId": user["idp_name"],
+         }),
+       ],
+       _email = user["emails"][0]["value"], // Look at this
+       _uid = user["id"],
+       _isAnonymous = false,
+       _options = auth.options,
+       _userHelper =
+           auth.config.authType == 'idcs'
+               ? IDCSUserHelper(
+                 options: auth.options,
+                 config: auth.config,
+                 logLevel: auth.app.logLevel,
+               )
+               // : (auth.config.authType == "base_s" ||
+               //         auth.config.authType == "ldap_s")
+               //     ? ONPREMSRPUserHelper(
+               //         options: auth.options,
+               //         config: auth.config,
+               //         accessToken: IdTokenResult(token: accessToken.token),
+               //         logLevel: auth.app.logLevel)
+               : ONPREMUserHelper(
+                 options: auth.options,
+                 config: auth.config,
+                 logLevel: auth.app.logLevel,
+               ) {
     _userHelper._setApp(auth.app);
   }
 
@@ -451,17 +455,26 @@ class User {
   /// String? token = await user.getIdToken(true);
   /// ```
   Future<String?> getIdToken([bool forceRefresh = false]) async {
-    IdTokenResult? laccessToken = await _auth.__getIdTokenResult(_auth.app.options.appID + globals.accessTokenKey);
-    String? lrefreshToken = await _auth.__getToken(_auth.app.options.appID + globals.refreshTokenKey);
+    IdTokenResult? laccessToken = await _auth.__getIdTokenResult(
+      _auth.app.options.appID + globals.accessTokenKey,
+    );
+    String? lrefreshToken = await _auth.__getToken(
+      _auth.app.options.appID + globals.refreshTokenKey,
+    );
     if (forceRefresh || !_userHelper.vaidateAccessToken(laccessToken)) {
       dynamic tok = await _userHelper.refreshAccessToken(
-          client: createClient(_auth.app), refreshToken: lrefreshToken);
+        client: createClient(_auth.app),
+        refreshToken: lrefreshToken,
+      );
       _refreshToken = tok["refresh_token"];
       _accessToken = IdTokenResult(token: tok["access_token"]);
       laccessToken = IdTokenResult(token: tok["access_token"]);
       _auth.idTokenController.add(this);
       _auth.userController.add(this);
-      _auth._syncLoginPersistence(tok["access_token"], tok["refresh_token"] ?? "");
+      _auth._syncLoginPersistence(
+        tok["access_token"],
+        tok["refresh_token"] ?? "",
+      );
       await _auth.__setCredTokens({
         "accessToken": _accessToken,
         "refreshToken": tok["refresh_token"],
@@ -474,12 +487,15 @@ class User {
   Future<String?> getFUSABASEToken([bool forceRefresh = false]) async {
     if (forceRefresh || !_userHelper.vaidateFUSABASEToken(null)) {
       try {
-         //await getIdToken();
-          _fusabaseToken = IdTokenResult(token:  await _userHelper.fetchFusabaseToken(
-              client: createClient(_auth.app), url:"${_options?.ordsHost}_/baas-services/idm/idcs/${_options?.projectID}/${IDCSConfig.FETCH_FUSABASE_TOKEN}?apiKey=${_options?.appID}", user:this));
-      } catch (e) {
-
-      }
+        final token = await _userHelper.fetchFusabaseToken(
+          client: createClient(_auth.app),
+          url: "",
+          user: this,
+        );
+        if (token != null && token != "") {
+          _fusabaseToken = IdTokenResult(token: token);
+        }
+      } catch (e) {}
     }
     if (_fusabaseToken != null) {
       return _fusabaseToken?.token;
@@ -516,10 +532,11 @@ class User {
   Future<void> updatePassword(String oldPassword, String newPass) async {
     await getIdToken();
     await _userHelper.updatePasswordHelper(
-        client: createClient(_auth.app),
-        user: this,
-        newPassword: newPass,
-        oldPassword: oldPassword);
+      client: createClient(_auth.app),
+      user: this,
+      newPassword: newPass,
+      oldPassword: oldPassword,
+    );
     _auth._syncLogoutPersistence();
   }
 
@@ -535,17 +552,19 @@ class User {
     if (refreshToken == null) {
       String errMessage = AuthErrorMessageTemplates.USER_REAUTHENTICATE;
       throw AuthUtils.authErrorHandler(
-          status: globals.ErrorMap[globals.ErrorCode.INVALID_USER_TOK] ?? 999,
-          message: errMessage);
+        status: globals.ErrorMap[globals.ErrorCode.INVALID_USER_TOK] ?? 999,
+        message: errMessage,
+      );
     }
 
     final userDetails = await _auth._authHelper.reloadUser(user: this);
 
     final User user = User(
-        user: userDetails,
-        auth: _auth,
-        accessToken: _accessToken,
-        refreshToken: refreshToken);
+      user: userDetails,
+      auth: _auth,
+      accessToken: _accessToken,
+      refreshToken: refreshToken,
+    );
     await user.getFUSABASEToken();
 
     _auth.__updateCurrentUser(user);
@@ -566,7 +585,10 @@ class User {
       return;
     }
     await _userHelper.updateProfileNameHelper(
-        client: createClient(_auth.app), user: this, displayName: displayName);
+      client: createClient(_auth.app),
+      user: this,
+      displayName: displayName,
+    );
     await reload();
   }
 
@@ -585,7 +607,10 @@ class User {
       return;
     }
     await _userHelper.updatePhoneNumberHelper(
-        client: createClient(_auth.app), user: this, phoneNumber: phoneNumber);
+      client: createClient(_auth.app),
+      user: this,
+      phoneNumber: phoneNumber,
+    );
     await reload();
   }
 
@@ -604,7 +629,10 @@ class User {
       return;
     }
     await _userHelper.updatePhotoURLHelper(
-        client: createClient(_auth.app), user: this, photoURL: photoURL);
+      client: createClient(_auth.app),
+      user: this,
+      photoURL: photoURL,
+    );
     await reload();
   }
 
@@ -639,7 +667,11 @@ class User {
   ]) async {
     await getIdToken();
     await _userHelper.sendEmailVerificationHelper(
-        client: createClient(_auth.app), user:this, email: email, id: uid);
+      client: createClient(_auth.app),
+      user: this,
+      email: email,
+      id: uid,
+    );
   }
 
   /// Links the user account with the given credentials.
@@ -653,7 +685,11 @@ class User {
   /// var cred = await user.linkWithCredential(myCredential);
   /// ```
   Future<UserCredential> linkWithCredential(AuthCredential credential) async {
-    await _userHelper.linkWithCredentialHelper(client: createClient(_auth.app), user:this, credential:credential);
+    await _userHelper.linkWithCredentialHelper(
+      client: createClient(_auth.app),
+      user: this,
+      credential: credential,
+    );
     await reload();
     var newCreds = UserCredential(user: this, credential: credential);
     return newCreds;
@@ -673,13 +709,17 @@ class User {
     var tokensObj = await _userHelper.socialLink(provider);
     var idToken = tokensObj["id_token"];
     if (provider is GoogleAuthProvider) {
-      return await linkWithCredential(GoogleAuthProvider.credential(idToken: idToken));
-    }
-    else if (provider is FacebookAuthProvider) {
-      return await linkWithCredential(FacebookAuthProvider.credential(idToken: idToken));
-    }
-    else if (provider is GithubAuthProvider) {
-      return await linkWithCredential(GithubAuthProvider.credential(idToken: idToken));
+      return await linkWithCredential(
+        GoogleAuthProvider.credential(idToken: idToken),
+      );
+    } else if (provider is FacebookAuthProvider) {
+      return await linkWithCredential(
+        FacebookAuthProvider.credential(idToken: idToken),
+      );
+    } else if (provider is GithubAuthProvider) {
+      return await linkWithCredential(
+        GithubAuthProvider.credential(idToken: idToken),
+      );
     }
     return UserCredential(user: null, credential: null);
   }
@@ -696,15 +736,22 @@ class User {
   /// ```
   Future<void> linkWithRedirect(AuthProvider provider) async {
     dynamic res = await _auth._authHelper.generatePKCE(provider);
-    
+
     // if (!kIsWeb) {
     //   await _auth.__setToken(_auth.app.options.appID + globals.codeKey, res["code"]);
     // }
-    await _auth.__setToken(_auth.app.options.appID + globals.loginKey, globals.redirectKey);
-    await _auth.__setToken(_auth.app.options.appID + globals.providerKey,
-     provider.providerId);
-    await _auth.__setToken(_auth.app.options.appID + globals.codeVerifierKey,
-      res["codeVerifier"]);
+    await _auth.__setToken(
+      _auth.app.options.appID + globals.loginKey,
+      globals.redirectKey,
+    );
+    await _auth.__setToken(
+      _auth.app.options.appID + globals.providerKey,
+      provider.providerId,
+    );
+    await _auth.__setToken(
+      _auth.app.options.appID + globals.codeVerifierKey,
+      res["codeVerifier"],
+    );
     await _userHelper.linkWithRedirectHelper(provider, res);
   }
 
@@ -718,8 +765,12 @@ class User {
   /// ```dart
   /// var updatedUser = await user.unlink('google.com');
   /// ```
-  Future<User> unlink (providerId) async {
-    await _userHelper.unlinkHelper(client: createClient(_auth.app), user:this, providerId: providerId);
+  Future<User> unlink(providerId) async {
+    await _userHelper.unlinkHelper(
+      client: createClient(_auth.app),
+      user: this,
+      providerId: providerId,
+    );
     await reload();
     return this;
   }

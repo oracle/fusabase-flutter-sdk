@@ -260,7 +260,7 @@ DateTime? parseTimestamp(String timestamp) {
 class Utils {
   static const String _redacted = '[REDACTED]';
   static final RegExp _sensitiveKeyPattern = RegExp(
-    r'(authorization|authz|token|password|passwd|pwd|secret|credential|assertion|code_verifier|refresh_token|access_token|id_token|api[_-]?key|client[_-]?secret|apptrusttoken|appchecktoken)',
+    r'(authorization|authz|token|password|passwd|pwd|secret|credential|assertion|code_verifier|refresh_token|access_token|id_token|api[_-]?key|client[_-]?secret|apptrusttoken)',
     caseSensitive: false,
   );
   static final RegExp _authorizationValuePattern = RegExp(

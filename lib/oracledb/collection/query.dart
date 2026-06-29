@@ -70,14 +70,14 @@ class Query<T extends Object?> {
 
   /// Gets the parameters of the query.
   Map<String, dynamic> get parameters => {
-        "conditions": _conditions,
-        "aggregate": _aggregate,
-        "explicitOrder": _explicitOrder,
-        "joins": _joins,
-        "col_group": _col_group,
-        "limit": _limit,
-        "path": _path
-      };
+    "conditions": _conditions,
+    "aggregate": _aggregate,
+    "explicitOrder": _explicitOrder,
+    "joins": _joins,
+    "col_group": _col_group,
+    "limit": _limit,
+    "path": _path,
+  };
 
   /// Gets the FusabaseOracledb instance associated with this query.
   FusabaseOracledb get oracledb => _oracledb;
@@ -85,22 +85,22 @@ class Query<T extends Object?> {
   /// Gets the path of the query.
   String get path => _path.join('/');
 
-  Query(
-      {required QueryHelper helper,
-      required FusabaseOracledb oracledb,
-      required String path,
-      dynamic parent})
-      : _oracledb = oracledb,
-        _limit = 0,
-        type = "query",
-        _ops = [],
-        __logLevel = oracledb.app.logLevel,
-        _col_group = "",
-        _rt = 0,
-        _helper = helper,
-        _brid = [],
-        _vectorSearch = null,
-        _path = path.toString().trim().split('/');
+  Query({
+    required QueryHelper helper,
+    required FusabaseOracledb oracledb,
+    required String path,
+    dynamic parent,
+  }) : _oracledb = oracledb,
+       _limit = 0,
+       type = "query",
+       _ops = [],
+       __logLevel = oracledb.app.logLevel,
+       _col_group = "",
+       _rt = 0,
+       _helper = helper,
+       _brid = [],
+       _vectorSearch = null,
+       _path = path.toString().trim().split('/');
 
   /// Recursively retrieves all where conditions from a Filter.
   ///
@@ -119,19 +119,21 @@ class Query<T extends Object?> {
     var res = [];
 
     if (f._type == "BASE") {
-      res.add({"field": f.cons["BASE"]![0]["field"], 
-      "op": whereOperators[f._operation], 
-      "value": f.cons["BASE"]![0][f._operation]});
+      res.add({
+        "field": f.cons["BASE"]![0]["field"],
+        "op": whereOperators[f._operation],
+        "value": f.cons["BASE"]![0][f._operation],
+      });
     }
 
     if (f._type == "AND" && f.cons["AND"]!.isNotEmpty) {
       res.add({"field": null, "op": '(', "value": null});
-      for (int i =0;i<f.cons["AND"]!.length;i++) {
+      for (int i = 0; i < f.cons["AND"]!.length; i++) {
         var recRes = getAllWhere(f.cons["AND"]![i]);
-        for (int j=0;j<recRes.length;j++) {
+        for (int j = 0; j < recRes.length; j++) {
           res.add(recRes[j]);
         }
-        if (i!=f.cons["AND"]!.length-1) {
+        if (i != f.cons["AND"]!.length - 1) {
           res.add({"field": null, "op": 'AND', "value": null});
         }
       }
@@ -140,12 +142,12 @@ class Query<T extends Object?> {
 
     if (f._type == "OR" && f.cons["OR"]!.isNotEmpty) {
       res.add({"field": null, "op": '(', "value": null});
-      for (int i =0;i<f.cons["OR"]!.length;i++) {
+      for (int i = 0; i < f.cons["OR"]!.length; i++) {
         var recRes = getAllWhere(f.cons["OR"]![i]);
-        for (int j=0;j<recRes.length;j++) {
+        for (int j = 0; j < recRes.length; j++) {
           res.add(recRes[j]);
         }
-        if (i!=f.cons["OR"]!.length-1) {
+        if (i != f.cons["OR"]!.length - 1) {
           res.add({"field": null, "op": 'OR', "value": null});
         }
       }
@@ -168,23 +170,24 @@ class Query<T extends Object?> {
   /// ```dart
   /// query = query.where('age', isGreaterThan: 18);
   /// ```
-  Query<T> where(Object field,
-      {Object? isEqualTo,
-      Object? isNotEqualTo,
-      Object? isLessThan,
-      Object? isLessThanOrEqualTo,
-      Object? isGreaterThan,
-      Object? isGreaterThanOrEqualTo,
-      Object? arrayContains,
-      Iterable<Object?>? arrayContainsAny,
-      Iterable<Object?>? whereIn,
-      Iterable<Object?>? whereNotIn,
-      bool? isNull
-      }) {
+  Query<T> where(
+    Object field, {
+    Object? isEqualTo,
+    Object? isNotEqualTo,
+    Object? isLessThan,
+    Object? isLessThanOrEqualTo,
+    Object? isGreaterThan,
+    Object? isGreaterThanOrEqualTo,
+    Object? arrayContains,
+    Iterable<Object?>? arrayContainsAny,
+    Iterable<Object?>? whereIn,
+    Iterable<Object?>? whereNotIn,
+    bool? isNull,
+  }) {
     if (field is Filter) {
       var filters = getAllWhere(field);
       dynamic res = this;
-      for (int i = 0;i<filters.length;i++) {
+      for (int i = 0; i < filters.length; i++) {
         res._conditions.add(filters[i]);
       }
     }
@@ -199,50 +202,66 @@ class Query<T extends Object?> {
       "arrayContainsAny": arrayContainsAny,
       "whereIn": whereIn,
       "whereNotIn": whereNotIn,
-      "isNull": isNull
+      "isNull": isNull,
     };
     if (field is FieldPath) {
       field = field.getPath();
     }
-    Query<T> newQuery =
-        Query<T>(helper: QueryHelper(), oracledb: _oracledb, path: path);
+    Query<T> newQuery = Query<T>(
+      helper: QueryHelper(),
+      oracledb: _oracledb,
+      path: path,
+    );
     _helper.dupQuery(newQuery, this);
 
     conds.forEach((key, value) {
-        if (value != null && value != '') {
-          newQuery._ops.add(key);
-          if (key == "arrayContains") {
-            for (int i=0;i<newQuery._ops.length;i++) {
-              if (newQuery._ops[i] == "arrayContainsAny") {
-                throw Utils.oracledbErrorHandler(
-                  400, OracledbErrorMessages.invalidArrayContainsCombination, null);
-              }
+      if (value != null && value != '') {
+        newQuery._ops.add(key);
+        if (key == "arrayContains") {
+          for (int i = 0; i < newQuery._ops.length; i++) {
+            if (newQuery._ops[i] == "arrayContainsAny") {
+              throw Utils.oracledbErrorHandler(
+                400,
+                OracledbErrorMessages.invalidArrayContainsCombination,
+                null,
+              );
             }
           }
-          if (key == "arrayContainsAny") {
-            for (int i=0;i<newQuery._ops.length;i++) {
-              if (newQuery._ops[i] == "arrayContains") {
-                throw Utils.oracledbErrorHandler(
-                  400, OracledbErrorMessages.invalidArrayContainsCombination, null);
-              }
-              }
-            }
-          if (("${whereOperators[key]}" == "in" || "${whereOperators[key]}" == "not in") && value is! List) {
-            value = [value];
-          }
-          newQuery._conditions
-              .add({"field": "$field", "op": "${whereOperators[key]}", "value": value});
         }
+        if (key == "arrayContainsAny") {
+          for (int i = 0; i < newQuery._ops.length; i++) {
+            if (newQuery._ops[i] == "arrayContains") {
+              throw Utils.oracledbErrorHandler(
+                400,
+                OracledbErrorMessages.invalidArrayContainsCombination,
+                null,
+              );
+            }
+          }
+        }
+        if (("${whereOperators[key]}" == "in" ||
+                "${whereOperators[key]}" == "not in") &&
+            value is! List) {
+          value = [value];
+        }
+        newQuery._conditions.add({
+          "field": "$field",
+          "op": "${whereOperators[key]}",
+          "value": value,
+        });
       }
-    );
+    });
 
     return newQuery;
   }
 
   /// Returns a cloned query with vector search metadata attached.
   Query<T> withVectorSearch(Map<String, dynamic> vectorSearch) {
-    Query<T> newQuery =
-        Query<T>(helper: QueryHelper(), oracledb: _oracledb, path: path);
+    Query<T> newQuery = Query<T>(
+      helper: QueryHelper(),
+      oracledb: _oracledb,
+      path: path,
+    );
     _helper.dupQuery(newQuery, this);
     newQuery._vectorSearch = deepClone(vectorSearch) as Map<String, dynamic>;
     return newQuery;
@@ -333,9 +352,12 @@ class Query<T extends Object?> {
   /// Returns:
   /// A new [Query] with the added filter.
   ///
-  column (List<String> values) {
-    Query<T> newQuery =
-        Query<T>(helper: QueryHelper(), oracledb: _oracledb, path: path);
+  column(List<String> values) {
+    Query<T> newQuery = Query<T>(
+      helper: QueryHelper(),
+      oracledb: _oracledb,
+      path: path,
+    );
     _helper.dupQuery(newQuery, this);
 
     for (var i = 0; i < values.length; i++) {
@@ -358,15 +380,18 @@ class Query<T extends Object?> {
   /// query = query.startAt([20]);
   /// ```
   Query<T> startAt(Iterable<Object?> values) {
-    Query<T> newQuery =
-        Query<T>(helper: QueryHelper(), oracledb: _oracledb, path: path);
+    Query<T> newQuery = Query<T>(
+      helper: QueryHelper(),
+      oracledb: _oracledb,
+      path: path,
+    );
     _helper.dupQuery(newQuery, this);
 
     for (var i = 0; i < values.length; i++) {
       newQuery._conditions.add({
         "field": newQuery._explicitOrder[i]["field"],
         "op": ">=",
-        "value": values.elementAt(i)
+        "value": values.elementAt(i),
       });
     }
 
@@ -386,8 +411,11 @@ class Query<T extends Object?> {
   /// query = query.startAtDocument(snapshot);
   /// ```
   Query<T> startAtDocument(DocumentSnapshot documentSnapshot) {
-    Query<T> newQuery =
-        Query<T>(helper: QueryHelper(), oracledb: _oracledb, path: path);
+    Query<T> newQuery = Query<T>(
+      helper: QueryHelper(),
+      oracledb: _oracledb,
+      path: path,
+    );
     _helper.dupQuery(newQuery, this);
     String fieldName = newQuery._explicitOrder[0]["field"];
     final dynamic data = documentSnapshot.data() ?? {};
@@ -409,15 +437,18 @@ class Query<T extends Object?> {
   /// query = query.startAfter([20]);
   /// ```
   Query<T> startAfter(Iterable<Object?> values) {
-    Query<T> newQuery =
-        Query<T>(helper: QueryHelper(), oracledb: _oracledb, path: path);
+    Query<T> newQuery = Query<T>(
+      helper: QueryHelper(),
+      oracledb: _oracledb,
+      path: path,
+    );
     _helper.dupQuery(newQuery, this);
 
     for (var i = 0; i < values.length; i++) {
       newQuery._conditions.add({
         "field": newQuery._explicitOrder[i]["field"],
         "op": ">",
-        "value": values.elementAt(i)
+        "value": values.elementAt(i),
       });
     }
 
@@ -437,8 +468,11 @@ class Query<T extends Object?> {
   /// query = query.startAfterDocument(snapshot);
   /// ```
   Query<T> startAfterDocument(DocumentSnapshot documentSnapshot) {
-    Query<T> newQuery =
-        Query<T>(helper: QueryHelper(), oracledb: _oracledb, path: path);
+    Query<T> newQuery = Query<T>(
+      helper: QueryHelper(),
+      oracledb: _oracledb,
+      path: path,
+    );
     _helper.dupQuery(newQuery, this);
     String fieldName = newQuery._explicitOrder[0]["field"];
     final dynamic data = documentSnapshot.data() ?? {};
@@ -460,15 +494,18 @@ class Query<T extends Object?> {
   /// query = query.endAt([30]);
   /// ```
   Query<T> endAt(Iterable<Object?> values) {
-    Query<T> newQuery =
-        Query<T>(helper: QueryHelper(), oracledb: _oracledb, path: path);
+    Query<T> newQuery = Query<T>(
+      helper: QueryHelper(),
+      oracledb: _oracledb,
+      path: path,
+    );
     _helper.dupQuery(newQuery, this);
 
     for (var i = 0; i < values.length; i++) {
       newQuery._conditions.add({
         "field": newQuery._explicitOrder[i]["field"],
         "op": "<=",
-        "value": values.elementAt(i)
+        "value": values.elementAt(i),
       });
     }
 
@@ -488,8 +525,11 @@ class Query<T extends Object?> {
   /// query = query.endAtDocument(snapshot);
   /// ```
   Query<T> endAtDocument(DocumentSnapshot documentSnapshot) {
-    Query<T> newQuery =
-        Query<T>(helper: QueryHelper(), oracledb: _oracledb, path: path);
+    Query<T> newQuery = Query<T>(
+      helper: QueryHelper(),
+      oracledb: _oracledb,
+      path: path,
+    );
     _helper.dupQuery(newQuery, this);
     String fieldName = newQuery._explicitOrder[0]["field"];
     final dynamic data = documentSnapshot.data() ?? {};
@@ -511,15 +551,18 @@ class Query<T extends Object?> {
   /// query = query.endBefore([30]);
   /// ```
   Query<T> endBefore(Iterable<Object?> values) {
-    Query<T> newQuery =
-        Query<T>(helper: QueryHelper(), oracledb: _oracledb, path: path);
+    Query<T> newQuery = Query<T>(
+      helper: QueryHelper(),
+      oracledb: _oracledb,
+      path: path,
+    );
     _helper.dupQuery(newQuery, this);
 
     for (var i = 0; i < values.length; i++) {
       newQuery._conditions.add({
         "field": newQuery._explicitOrder[i]["field"],
         "op": "<",
-        "value": values.elementAt(i)
+        "value": values.elementAt(i),
       });
     }
 
@@ -539,8 +582,11 @@ class Query<T extends Object?> {
   /// query = query.endBeforeDocument(snapshot);
   /// ```
   Query<T> endBeforeDocument(DocumentSnapshot documentSnapshot) {
-    Query<T> newQuery =
-        Query<T>(helper: QueryHelper(), oracledb: _oracledb, path: path);
+    Query<T> newQuery = Query<T>(
+      helper: QueryHelper(),
+      oracledb: _oracledb,
+      path: path,
+    );
     _helper.dupQuery(newQuery, this);
     String fieldName = newQuery._explicitOrder[0]["field"];
     final dynamic data = documentSnapshot.data() ?? {};
@@ -564,11 +610,17 @@ class Query<T extends Object?> {
   Query<T> limit(int number) {
     if (number < 0) {
       throw Utils.oracledbErrorHandler(
-          400, "Provided limit should be non negative.", null);
+        400,
+        "Provided limit should be non negative.",
+        null,
+      );
     }
 
-    Query<T> newQuery =
-        Query<T>(helper: QueryHelper(), oracledb: _oracledb, path: path);
+    Query<T> newQuery = Query<T>(
+      helper: QueryHelper(),
+      oracledb: _oracledb,
+      path: path,
+    );
     _helper.dupQuery(newQuery, this);
     newQuery._limit = number;
 
@@ -588,8 +640,11 @@ class Query<T extends Object?> {
   /// query = query.limitToLast(5);
   /// ```
   Query<T> limitToLast(int limit) {
-    Query<T> newQuery =
-        Query<T>(helper: QueryHelper(), oracledb: _oracledb, path: path);
+    Query<T> newQuery = Query<T>(
+      helper: QueryHelper(),
+      oracledb: _oracledb,
+      path: path,
+    );
     _helper.dupQuery(newQuery, this);
 
     for (var i = 0; i < this._explicitOrder.length; i++) {
@@ -620,8 +675,11 @@ class Query<T extends Object?> {
     if (field is FieldPath) {
       field = field.getPath();
     }
-    Query<T> newQuery =
-        Query<T>(helper: QueryHelper(), oracledb: _oracledb, path: path);
+    Query<T> newQuery = Query<T>(
+      helper: QueryHelper(),
+      oracledb: _oracledb,
+      path: path,
+    );
     _helper.dupQuery(newQuery, this);
 
     newQuery._explicitOrder.add({
@@ -641,8 +699,11 @@ class Query<T extends Object?> {
   /// var countQuery = query.count();
   /// ```
   AggregateQuery count() {
-    Query<T> newQuery =
-        Query<T>(helper: QueryHelper(), oracledb: _oracledb, path: path);
+    Query<T> newQuery = Query<T>(
+      helper: QueryHelper(),
+      oracledb: _oracledb,
+      path: path,
+    );
     _helper.dupQuery(newQuery, this);
     dynamic obj;
     obj = {"func": "count", "field": "", "op_key": ""};
@@ -694,8 +755,11 @@ class Query<T extends Object?> {
     AggregateField? aggregateField29,
     AggregateField? aggregateField30,
   ]) {
-    Query<T> newQuery =
-        Query<T>(helper: QueryHelper(), oracledb: _oracledb, path: path);
+    Query<T> newQuery = Query<T>(
+      helper: QueryHelper(),
+      oracledb: _oracledb,
+      path: path,
+    );
     _helper.dupQuery(newQuery, this);
 
     var temp_arr = [
@@ -728,15 +792,18 @@ class Query<T extends Object?> {
       aggregateField27,
       aggregateField28,
       aggregateField29,
-      aggregateField30
+      aggregateField30,
     ];
 
     for (var i = 0; i < 30; i++) {
       if (temp_arr[i] != null) {
         AggregateField? t = temp_arr[i];
 
-        newQuery._aggregate.add(
-            {"func": t?.aggregateType, "field": t?.field, "op_key": t?.field});
+        newQuery._aggregate.add({
+          "func": t?.aggregateType,
+          "field": t?.field,
+          "op_key": t?.field,
+        });
       }
     }
 
@@ -764,14 +831,26 @@ class Query<T extends Object?> {
 
     try {
       result = await _helper.get(
-          createClient(_oracledb.app), options, this, this.__logLevel, accessToken, null);
+        createClient(_oracledb.app),
+        options,
+        this,
+        this.__logLevel,
+        accessToken,
+        null,
+      );
     } catch (e) {
-      return QuerySnapshot<T>([], this,
-          SnapshotMetadata(hasPendingWrites: false, isFromCache: false));
+      return QuerySnapshot<T>(
+        [],
+        this,
+        SnapshotMetadata(hasPendingWrites: false, isFromCache: false),
+      );
     }
 
-    return QuerySnapshot<T>(result["ret"] ?? [], this,
-        SnapshotMetadata(hasPendingWrites: false, isFromCache: false));
+    return QuerySnapshot<T>(
+      result["ret"] ?? [],
+      this,
+      SnapshotMetadata(hasPendingWrites: false, isFromCache: false),
+    );
   }
 
   /// Applies converters to the query results.
@@ -787,17 +866,19 @@ class Query<T extends Object?> {
   /// ```dart
   /// var convertedQuery = query.withConverter<User>(fromOracledb: User.fromMap, toOracledb: User.toMap);
   /// ```
-Query<R> withConverter<R>({
+  Query<R> withConverter<R>({
     required FromOracledb<R> fromOracledb,
     required ToOracledb<R> toOracledb,
   }) {
-    
-    Query<R> q = Query<R> (helper:QueryHelper(),oracledb:this.oracledb,path:this.path);
+    Query<R> q = Query<R>(
+      helper: QueryHelper(),
+      oracledb: this.oracledb,
+      path: this.path,
+    );
     q.fromConverter = fromOracledb;
     q.toConverter = toOracledb;
     return q;
   }
-
 
   /// Returns a stream of snapshots for the query.
   ///
@@ -812,63 +893,69 @@ Query<R> withConverter<R>({
   /// ```dart
   /// query.snapshots().listen((snapshot) { /* handle snapshot */ });
   /// ```
-  Stream<QuerySnapshot<T>> snapshots({bool includeMetadataChanges = false,
-  ListenSource source = ListenSource.defaultSource}) {
+  Stream<QuerySnapshot<T>> snapshots({
+    bool includeMetadataChanges = false,
+    ListenSource source = ListenSource.defaultSource,
+  }) {
     this._rt = 1;
     late StreamController<QuerySnapshot<T>> controller;
     Timer? _pollingTimer;
 
-var auth = FusabaseAuth.instanceFor(app: this._oracledb.app);
-var email = auth.currentUser?.email ?? "";
-      var userLvlPayload = {
-        "path": this._path,
-        "conditions": this._conditions,
-        "explicitOrder": this._explicitOrder,
-        "access_token": email
-      };
+    var auth = FusabaseAuth.instanceFor(app: this._oracledb.app);
+    var email = auth.currentUser?.email ?? "";
+    var userLvlPayload = {
+      "path": this._path,
+      "conditions": this._conditions,
+      "explicitOrder": this._explicitOrder,
+      "access_token": email,
+    };
 
-      // this query id is used to store in the cache (user level)
-      int queryIdInt = createHashFromJson(userLvlPayload);
-      String queryId = queryIdInt.toString();
+    // this query id is used to store in the cache (user level)
+    int queryIdInt = createHashFromJson(userLvlPayload);
+    String queryId = queryIdInt.toString();
 
-      var socketPayload = {
-        "path": this._path,
-        "conditions": this._conditions,
-        "explicitOrder": this._explicitOrder
-      };
+    var socketPayload = {
+      "path": this._path,
+      "conditions": this._conditions,
+      "explicitOrder": this._explicitOrder,
+    };
 
-      // this query id is used to register listener (common for each query)
-      int queryIdSocketInt = createHashFromJson(socketPayload);
-      String queryIdSocket = queryIdSocketInt.toString();
+    // this query id is used to register listener (common for each query)
+    int queryIdSocketInt = createHashFromJson(socketPayload);
+    String queryIdSocket = queryIdSocketInt.toString();
 
-      // this query id is used to store the notifiers (unique each time)
-      String localQueryId = generateRandomHash();
+    // this query id is used to store the notifiers (unique each time)
+    String localQueryId = generateRandomHash();
 
-    Future<QuerySnapshot<T>> firstPoll () async {
-dynamic oldData = await this._oracledb._snapStore.getData(queryId, oracledb);
+    Future<QuerySnapshot<T>> firstPoll() async {
+      dynamic oldData = await this._oracledb._snapStore.getData(
+        queryId,
+        oracledb,
+      );
 
       QuerySnapshot newSnap = await this.get();
 
       if (oldData == null) {
         //first snapshot
-await this._oracledb._snapStore.insertData({
-          "queryId":queryId,
-          "snap":newSnap,
-          "type":"collection",
-          "path":this.path
+        await this._oracledb._snapStore.insertData({
+          "queryId": queryId,
+          "snap": newSnap,
+          "type": "collection",
+          "path": this.path,
         });
       } else {
-await this._oracledb._snapStore.updateData({
-          "queryId":queryId,
-          "snap":newSnap,
-          "type":"collection",
-          "path":this.path
+        await this._oracledb._snapStore.updateData({
+          "queryId": queryId,
+          "snap": newSnap,
+          "type": "collection",
+          "path": this.path,
         });
       }
       return newSnap as QuerySnapshot<T>;
     }
 
-    bool uselongPolling = _oracledb.settings.webExperimentalForceLongPolling ?? true;
+    bool uselongPolling =
+        _oracledb.settings.webExperimentalForceLongPolling ?? true;
     if (_oracledb.settings.webExperimentalForceLongPolling ?? true) {
       uselongPolling = true;
     }
@@ -876,7 +963,6 @@ await this._oracledb._snapStore.updateData({
     //uselongPolling = false;
 
     if (uselongPolling) {
-
       controller = StreamController<QuerySnapshot<T>>.broadcast(
         onListen: () async {
           controller.add(await firstPoll());
@@ -886,19 +972,24 @@ await this._oracledb._snapStore.updateData({
         },
       );
 
-      Future<void> longPolling () async {
-dynamic oldData = await this._oracledb._snapStore.getData(queryId, oracledb);
+      final pollingInterval = _safeLongPollingInterval(this._oracledb.settings);
+
+      Future<void> longPolling() async {
+        dynamic oldData = await this._oracledb._snapStore.getData(
+          queryId,
+          oracledb,
+        );
         QuerySnapshot newSnap = await this.get();
         if (oldData == null) {
           //first snapshot
-await this._oracledb._snapStore.insertData({
-            "queryId":queryId,
-            "snap":newSnap,
-            "type":"collection",
-            "path":this.path
+          await this._oracledb._snapStore.insertData({
+            "queryId": queryId,
+            "snap": newSnap,
+            "type": "collection",
+            "path": this.path,
           });
           controller.add(newSnap as QuerySnapshot<T>);
-          return ;
+          return;
         }
 
         //create version maps for old and new snapshot docs
@@ -909,134 +1000,176 @@ await this._oracledb._snapStore.insertData({
         var oldIndexMap = {};
 
         for (var i = 0; i < newSnap._docs.length; i++) {
-          newVersionMap[newSnap._docs[i].id] = newSnap._docs[i]._otherMetadata["ASOF"]!=null ? BigInt.parse(newSnap._docs[i]._otherMetadata["ASOF"]) : 
-            newSnap._docs[i]._otherMetadata["VERSION"];
+          newVersionMap[newSnap._docs[i].id] =
+              newSnap._docs[i]._otherMetadata["ASOF"] != null
+                  ? BigInt.parse(newSnap._docs[i]._otherMetadata["ASOF"])
+                  : newSnap._docs[i]._otherMetadata["VERSION"];
         }
         for (var i = 0; i < oldData["snap"]._docs.length; i++) {
-          oldVersionMap[oldData["snap"]._docs[i].id] = oldData["snap"]._docs[i]._otherMetadata["ASOF"]!=null ? BigInt.parse(oldData["snap"]._docs[i]._otherMetadata["ASOF"]) :  oldData["snap"]._docs[i]._otherMetadata["VERSION"];
+          oldVersionMap[oldData["snap"]._docs[i].id] =
+              oldData["snap"]._docs[i]._otherMetadata["ASOF"] != null
+                  ? BigInt.parse(
+                    oldData["snap"]._docs[i]._otherMetadata["ASOF"],
+                  )
+                  : oldData["snap"]._docs[i]._otherMetadata["VERSION"];
           oldIndexMap[oldData["snap"]._docs[i].id] = i;
         }
 
         //create doc changes
         List<DocumentChange> docsChanged = [];
         for (var i = 0; i < newSnap._docs.length; i++) {
-          if (oldVersionMap[newSnap._docs[i].id]!=null && newVersionMap[newSnap._docs[i].id]>oldVersionMap[newSnap._docs[i].id]) {
-            docsChanged.add(DocumentChange(
-              doc: DocumentSnapshot({
-                "DOCUMENT": newSnap._docs[i]._data,
-                "OID" : newSnap._docs[i].id,
-                "VERSION" : newSnap._docs[i].version
-              },newSnap._docs[i]._reference, newSnap._docs[i]._metadata, newSnap._docs[i].rowID),
-              type: DocumentChangeType.modified,
-              oldIndex: oldIndexMap[newSnap._docs[i].id],
-              newIndex: i
-            ));
-          }
-          else if (oldVersionMap[newSnap._docs[i].id] == null) {
-            docsChanged.add(DocumentChange(
-              doc: DocumentSnapshot({
-                "DOCUMENT": newSnap._docs[i]._data,
-                "OID" : newSnap._docs[i].id,
-                "VERSION" : newSnap._docs[i].version
-              },newSnap._docs[i]._reference, newSnap._docs[i]._metadata, newSnap._docs[i].rowID),
-              type: DocumentChangeType.added,
-              oldIndex: -1,
-              newIndex: i
-            ));
+          if (oldVersionMap[newSnap._docs[i].id] != null &&
+              newVersionMap[newSnap._docs[i].id] >
+                  oldVersionMap[newSnap._docs[i].id]) {
+            docsChanged.add(
+              DocumentChange(
+                doc: DocumentSnapshot(
+                  {
+                    "DOCUMENT": newSnap._docs[i]._data,
+                    "OID": newSnap._docs[i].id,
+                    "VERSION": newSnap._docs[i].version,
+                  },
+                  newSnap._docs[i]._reference,
+                  newSnap._docs[i]._metadata,
+                  newSnap._docs[i].rowID,
+                ),
+                type: DocumentChangeType.modified,
+                oldIndex: oldIndexMap[newSnap._docs[i].id],
+                newIndex: i,
+              ),
+            );
+          } else if (oldVersionMap[newSnap._docs[i].id] == null) {
+            docsChanged.add(
+              DocumentChange(
+                doc: DocumentSnapshot(
+                  {
+                    "DOCUMENT": newSnap._docs[i]._data,
+                    "OID": newSnap._docs[i].id,
+                    "VERSION": newSnap._docs[i].version,
+                  },
+                  newSnap._docs[i]._reference,
+                  newSnap._docs[i]._metadata,
+                  newSnap._docs[i].rowID,
+                ),
+                type: DocumentChangeType.added,
+                oldIndex: -1,
+                newIndex: i,
+              ),
+            );
           }
         }
         for (var i = 0; i < oldData["snap"]._docs.length; i++) {
           if (newVersionMap[oldData["snap"]._docs[i].id] == null) {
-            docsChanged.add(DocumentChange(
-              doc: DocumentSnapshot({
-                "DOCUMENT": oldData["snap"]._docs[i]._data,
-                "OID" : oldData["snap"]._docs[i].id,
-                "VERSION" : oldData["snap"]._docs[i].version
-              },oldData["snap"]._docs[i].reference, oldData["snap"]._docs[i].metadata, oldData["snap"]._docs[i].rowID),
-              type: DocumentChangeType.removed,
-              oldIndex: i,
-              newIndex: -1,
-            ));
+            docsChanged.add(
+              DocumentChange(
+                doc: DocumentSnapshot(
+                  {
+                    "DOCUMENT": oldData["snap"]._docs[i]._data,
+                    "OID": oldData["snap"]._docs[i].id,
+                    "VERSION": oldData["snap"]._docs[i].version,
+                  },
+                  oldData["snap"]._docs[i].reference,
+                  oldData["snap"]._docs[i].metadata,
+                  oldData["snap"]._docs[i].rowID,
+                ),
+                type: DocumentChangeType.removed,
+                oldIndex: i,
+                newIndex: -1,
+              ),
+            );
           }
         }
 
         newSnap._docChanges = docsChanged;
 
-await this._oracledb._snapStore.updateData({
-            "queryId":queryId,
-            "snap":newSnap,
-            "type":"collection",
-            "path":this.path
-          });
+        await this._oracledb._snapStore.updateData({
+          "queryId": queryId,
+          "snap": newSnap,
+          "type": "collection",
+          "path": this.path,
+        });
 
         if (docsChanged.isNotEmpty) {
           controller.add(newSnap as QuerySnapshot<T>);
         }
-        return ;
+        return;
       }
 
-_pollingTimer = Timer(Duration(seconds: this._oracledb.settings.webExperimentalLongPollingOptions?.timeoutDuration?.inSeconds ?? 29), () {
+      _pollingTimer = Timer(pollingInterval, () {
         longPolling();
 
-_pollingTimer = Timer.periodic(Duration(seconds: this._oracledb.settings.webExperimentalLongPollingOptions?.timeoutDuration?.inSeconds ?? 29), (Timer timer) {
-            longPolling();
+        _pollingTimer = Timer.periodic(pollingInterval, (Timer timer) {
+          longPolling();
         });
       });
 
       return controller.stream;
-      
-    }
-    else {
+    } else {
+      bool isCancelled = false;
+      bool hasRegisteredRealtimeListener = false;
+      dynamic payload = {
+        "queryId": queryIdSocketInt,
+        "status": 1,
+        "payload": socketPayload,
+      };
+
+      void addToController(dynamic snap) {
+        if (!controller.isClosed) {
+          controller.add(snap as QuerySnapshot<T>);
+        }
+      }
 
       controller = StreamController<QuerySnapshot<T>>.broadcast(
         onListen: () async {
+          isCancelled = false;
           await _oracledb.preSnapshot();
-dynamic fsnap = await firstPoll();
-          controller.add(fsnap);
+          if (isCancelled) {
+            return;
+          }
+          this._oracledb._queryIdMap[queryIdSocket] = queryId;
+          List<String> localQueryIds = this._oracledb._localQueryIdMap
+              .putIfAbsent(queryId, () => []);
+          if (!localQueryIds.contains(localQueryId)) {
+            localQueryIds.add(localQueryId);
+          }
+          this._oracledb._snapshotControllerMap[localQueryId] = addToController;
+          hasRegisteredRealtimeListener = true;
+          this._oracledb.sendMessageSocket(payload);
+          dynamic fsnap = await firstPoll();
+          if (!isCancelled && !controller.isClosed) {
+            controller.add(fsnap);
+          }
         },
         onCancel: () {
-if (this._oracledb._snapshotControllerMap.containsKey(localQueryId)) {
-this._oracledb._snapshotControllerMap.remove(localQueryId);
+          isCancelled = true;
+          if (!hasRegisteredRealtimeListener) {
+            return;
           }
-if (this._oracledb._localQueryIdMap.containsKey(queryId) && this._oracledb._localQueryIdMap[queryId]!.contains(localQueryId)) {
-this._oracledb._localQueryIdMap[queryId]?.remove(localQueryId);
+          hasRegisteredRealtimeListener = false;
+          if (this._oracledb._snapshotControllerMap.containsKey(localQueryId)) {
+            this._oracledb._snapshotControllerMap.remove(localQueryId);
           }
-if (this._oracledb._localQueryIdMap[queryId]!.isEmpty) {
-this._oracledb._localQueryIdMap.remove(queryId);
-this._oracledb._queryIdMap.remove(queryIdSocket);
+          if (this._oracledb._localQueryIdMap.containsKey(queryId) &&
+              this._oracledb._localQueryIdMap[queryId]!.contains(
+                localQueryId,
+              )) {
+            this._oracledb._localQueryIdMap[queryId]?.remove(localQueryId);
+          }
+          if (!this._oracledb._localQueryIdMap.containsKey(queryId) ||
+              this._oracledb._localQueryIdMap[queryId]!.isEmpty) {
+            this._oracledb._localQueryIdMap.remove(queryId);
+            this._oracledb._queryIdMap.remove(queryIdSocket);
             dynamic unsubPayload = {
               "queryId": queryIdSocketInt,
               "status": 0,
-              "payload": socketPayload
+              "payload": socketPayload,
             };
-this._oracledb.sendMessageSocket(unsubPayload);
+            this._oracledb.sendMessageSocket(unsubPayload);
           }
         },
       );
 
-      // use web socket
-      dynamic payload = {
-        "queryId": queryIdSocketInt,
-        "status": 1,
-        "payload": socketPayload
-      };
-this._oracledb.sendMessageSocket(payload);
-this._oracledb._queryIdMap[queryIdSocket] = queryId;
-if (this._oracledb._localQueryIdMap.containsKey(queryId)) {
-this._oracledb._localQueryIdMap[queryId]?.add(localQueryId);
-      } else {
-this._oracledb._localQueryIdMap[queryId] = [localQueryId];
-      }
-
-      void addToController (dynamic snap) {
-        controller.add(snap as QuerySnapshot<T>);
-      }
-
-this._oracledb._snapshotControllerMap[localQueryId] = addToController;
-        
       return controller.stream;
     }
-
   }
-
 }

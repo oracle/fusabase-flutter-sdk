@@ -1,6 +1,6 @@
 name: fusabase_dart
 description: A new Flutter plugin project.
-version: 26.1.0
+version: 26.2.0
 resolution: workspace
 
 environment:
