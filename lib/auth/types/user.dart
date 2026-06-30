@@ -381,13 +381,6 @@ class User {
                  config: auth.config,
                  logLevel: auth.app.logLevel,
                )
-               // : (auth.config.authType == "base_s" ||
-               //         auth.config.authType == "ldap_s")
-               //     ? ONPREMSRPUserHelper(
-               //         options: auth.options,
-               //         config: auth.config,
-               //         accessToken: IdTokenResult(token: accessToken.token),
-               //         logLevel: auth.app.logLevel)
                : ONPREMUserHelper(
                  options: auth.options,
                  config: auth.config,
