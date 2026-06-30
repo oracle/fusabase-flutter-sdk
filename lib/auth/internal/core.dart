@@ -105,12 +105,6 @@ class FusabaseAuth {
                 config: getConfig(app),
                 logLevel: app.logLevel,
               )
-              // : (app.config?.authType == "base_s" ||
-              //         app.config?.authType == "ldap_s")
-              //     ? ONPREMSRPAuthHelper(
-              //         options: app.options,
-              //         config: getConfig(app),
-              //         logLevel: app.logLevel)
               : IDCSAuthHelper(
                 options: app.options,
                 config: getConfig(app),
@@ -443,12 +437,6 @@ class FusabaseAuth {
               config: config,
               logLevel: app.logLevel,
             )
-            // : (config.authType == "base_s" || config.authType == "ldap_s")
-            //     ? ONPREMSRPUserHelper(
-            //         options: options,
-            //         config: config,
-            //         accessToken: access_token,
-            //         logLevel: app.logLevel)
             : ONPREMUserHelper(
               options: options,
               config: config,
