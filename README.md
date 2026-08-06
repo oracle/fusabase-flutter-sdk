@@ -1,8 +1,8 @@
-# Oracle® Backend for Firebase (Fusabase) Flutter SDK
+# Oracle® Backend with Firebase APIs (Fusabase) Flutter SDK
 
-A Flutter SDK for Oracle Backend for Firebase (Fusabase) that provides authentication, document database, storage, App Trust, and vector search capabilities, backed entirely by Oracle AI Database via ORDS. 
+A Flutter SDK for Oracle Backend with Firebase APIs (Fusabase) that provides authentication, document database, storage, App Trust, and vector search capabilities, backed entirely by Oracle AI Database via ORDS. 
 
-This Oracle Backend for Firebase Flutter SDK follows the Firebase design, API patterns, and rules-based authorization model. Its SDK interfaces are designed to mirror the Firebase SDK interfaces so developers can move across backends with minimal changes. This Oracle Backend for Firebase Flutter SDK is a distinct Oracle offering.
+This Oracle Backend with Firebase APIs Flutter SDK follows the Firebase design, API patterns, and rules-based authorization model. Its SDK interfaces are designed to mirror the Firebase SDK interfaces so developers can move across backends with minimal changes. This Oracle Backend with Firebase APIs Flutter SDK is a distinct Oracle offering.
 
 ## Prerequisites
 
@@ -272,7 +272,7 @@ flutter test
 
 ## Trademarks
 
-Firebase is a trademark of Google LLC.  Use of the Firebase name here is solely to describe the design patterns and SDK interfaces that Oracle Backend for Firebase follows for developer familiarity and ease of migration; it does not imply any affiliation with or endorsement by Google.
+Firebase is a trademark of Google LLC.  Use of the Firebase name here is solely to describe the design patterns and SDK interfaces that Oracle Backend with Firebase APIs follows for developer familiarity and ease of migration; it does not imply any affiliation with or endorsement by Google.
 
 ## Contributing
 
