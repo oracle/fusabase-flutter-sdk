@@ -64,6 +64,7 @@ class DocumentChange {
   ///
   /// Parameters:
   /// - [jsonString]: The JSON data to parse.
+  /// - [db]: The database instance that owns restored document references.
   ///
   /// Returns:
   /// A [DocumentChange] instance.
@@ -196,13 +197,14 @@ class QuerySnapshot<T extends Object?> {
   ///
   /// Parameters:
   /// - [jsonString]: The JSON data to parse.
+  /// - [db]: The database instance that owns restored document references.
   ///
   /// Returns:
   /// A [QuerySnapshot] instance.
   ///
   /// Example:
   /// ```dart
-  /// var snapshot = QuerySnapshot.fromJson(jsonData);
+  /// var snapshot = QuerySnapshot.fromJson(jsonData, database);
   /// ```
   factory QuerySnapshot.fromJson(dynamic jsonString, dynamic db) {
     dynamic data = jsonString;
@@ -223,7 +225,7 @@ class QuerySnapshot<T extends Object?> {
     }
   
     for (var i =0;i<data["docs"].length;i++) {
-      docsList.add(QueryDocumentSnapshot.fromJson(data["docs"][i]));
+      docsList.add(QueryDocumentSnapshot.fromJson(data["docs"][i], db));
     }
 
     qSnap._docChanges = docCh;

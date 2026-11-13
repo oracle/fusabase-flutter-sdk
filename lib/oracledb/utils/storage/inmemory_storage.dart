@@ -25,6 +25,7 @@
 //-----------------------------------------------------------------------------
 
 
+/// @nodoc
 class DBHelper {
   final Map<String,dynamic> db;
   String name;

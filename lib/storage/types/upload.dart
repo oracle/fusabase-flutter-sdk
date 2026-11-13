@@ -81,10 +81,29 @@ abstract class Task implements Future<TaskSnapshot> {
   /// Returns: The current [TaskSnapshot].
   TaskSnapshot get snapshot => _snapshot;
 
+  /// Returns a single-event stream that completes with the final snapshot.
+  ///
+  /// Returns a [Stream<TaskSnapshot>] for use with stream APIs.
+  ///
+  /// Example:
+  /// ```dart
+  /// await for (final snapshot in task.asStream()) {
+  ///   print(snapshot.state);
+  /// }
+  /// ```
   @override
   Stream<TaskSnapshot> asStream() =>
       _completer.future.asStream().map((_) => _snapshot);
 
+  /// Registers a completion callback, as required by [Future.then].
+  ///
+  /// [onValue] receives the final [TaskSnapshot]; [onError] handles a failure.
+  /// Returns a [Future<S>] containing the callback result.
+  ///
+  /// Example:
+  /// ```dart
+  /// task.then((snapshot) => snapshot.bytesTransferred);
+  /// ```
   @override
   Future<S> then<S>(
     FutureOr<S> Function(TaskSnapshot) onValue, {
@@ -93,6 +112,15 @@ abstract class Task implements Future<TaskSnapshot> {
     return onValue(snapshot);
   }, onError: onError);
 
+  /// Registers an error handler, as required by [Future.catchError].
+  ///
+  /// [onError] handles task failures and [test] optionally filters errors.
+  /// Returns a [Future<TaskSnapshot>] after completion.
+  ///
+  /// Example:
+  /// ```dart
+  /// await task.catchError((error) => throw error);
+  /// ```
   @override
   Future<TaskSnapshot> catchError(
     Function onError, {
@@ -102,12 +130,31 @@ abstract class Task implements Future<TaskSnapshot> {
     return snapshot;
   }
 
+  /// Runs [action] after the task completes, as required by [Future.whenComplete].
+  ///
+  /// Returns a [Future<TaskSnapshot>] after the action has run.
+  ///
+  /// Example:
+  /// ```dart
+  /// await task.whenComplete(() => print('transfer finished'));
+  /// ```
   @override
   Future<TaskSnapshot> whenComplete(FutureOr Function() action) async {
     await _completer.future.whenComplete(action);
     return snapshot;
   }
 
+  /// Applies a time limit to completion of the task.
+  ///
+  /// [timeLimit] ([Duration]) is the maximum wait time. [onTimeout] optionally
+  /// supplies a snapshot when the limit expires.
+  ///
+  /// Returns a [Future<TaskSnapshot>] for the task result or timeout result.
+  ///
+  /// Example:
+  /// ```dart
+  /// await task.timeout(const Duration(minutes: 1));
+  /// ```
   @override
   Future<TaskSnapshot> timeout(
     Duration timeLimit, {
@@ -116,6 +163,7 @@ abstract class Task implements Future<TaskSnapshot> {
       .then((_) => snapshot)
       .timeout(timeLimit, onTimeout: onTimeout);
 
+  /// @nodoc
   /// Fires a snapshot event.
   ///
   /// Parameters:
@@ -124,6 +172,7 @@ abstract class Task implements Future<TaskSnapshot> {
     this._controller.add(snap);
   }
 
+  /// @nodoc
   /// Changes the state of the task.
   ///
   /// Parameters:
@@ -183,6 +232,7 @@ abstract class Task implements Future<TaskSnapshot> {
     }
   }
 
+  /// @nodoc
   Future<void> __failWithError(Object error, [StackTrace? stackTrace]) async {
     if (_completer.isCompleted) {
       return;
@@ -195,6 +245,11 @@ abstract class Task implements Future<TaskSnapshot> {
   /// Pauses the task.
   ///
   /// Returns: A Future that resolves to true if paused successfully.
+  ///
+  /// Example:
+  /// ```dart
+  /// final paused = await task.pause();
+  /// ```
   Future<bool> pause() async {
     await _initFuture;
     if (_helper.runtimeType == DownloadTaskController) {
@@ -213,6 +268,11 @@ abstract class Task implements Future<TaskSnapshot> {
   /// Cancels the task.
   ///
   /// Returns: A Future that resolves to true if canceled successfully.
+  ///
+  /// Example:
+  /// ```dart
+  /// final canceled = await task.cancel();
+  /// ```
   Future<bool> cancel() async {
     await _initFuture;
     if (_helper.isMultipart == null) {
@@ -227,6 +287,7 @@ abstract class Task implements Future<TaskSnapshot> {
     return true;
   }
 
+  /// @nodoc
   Future<bool> __resumeUpload() async {
     if (this._snapshot.state != TaskState.running) {
       return false;
@@ -264,6 +325,7 @@ abstract class Task implements Future<TaskSnapshot> {
     return result;
   }
 
+  /// @nodoc
   Future<void> __runUpload() async {
     // Only one upload loop may touch the shared multipart controller at a time.
     if (_uploadLoopActive) {
@@ -301,6 +363,11 @@ abstract class Task implements Future<TaskSnapshot> {
   /// Resumes the task.
   ///
   /// Returns: A Future that resolves to true if resumed successfully.
+  ///
+  /// Example:
+  /// ```dart
+  /// final resumed = await task.resume();
+  /// ```
   Future<bool> resume() async {
     await _initFuture;
     if (_helper.runtimeType == DownloadTaskController) {

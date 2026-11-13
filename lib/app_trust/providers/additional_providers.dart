@@ -28,21 +28,35 @@
 
 part of '../../app_trust.dart';
 
-/// reCAPTCHA Enterprise provider for web.
+/// Web attestation provider backed by reCAPTCHA Enterprise.
 class ReCaptchaEnterpriseProvider implements WebProvider {
   /// The reCAPTCHA Enterprise site key.
   final String siteKey;
 
-  /// Creates a web provider backed by reCAPTCHA Enterprise.
+  /// Creates a reCAPTCHA Enterprise provider.
+  ///
+  /// Parameters:
+  /// - [siteKey] ([String]): Public site key issued for the web application.
+  ///
+  /// Returns: a [ReCaptchaEnterpriseProvider].
   ReCaptchaEnterpriseProvider(this.siteKey);
 
   @override
+  /// Obtains a token for [action].
+  ///
+  /// Parameters: [action] ([String]), the provider action.
+  /// Returns: a [Future<String>] containing the token.
   Future<String> getAttestationToken(String action) {
     return attestation.getReCaptchaEnterpriseToken(siteKey, action);
   }
 }
 
-/// Cloudflare Turnstile provider for web.
+/// Web attestation provider backed by Cloudflare Turnstile.
+///
+/// Example:
+/// ```dart
+/// await trust.activate(webProvider: TurnstileProvider('site-key'));
+/// ```
 class TurnstileProvider implements WebProvider {
   /// The Turnstile site key.
   final String siteKey;
@@ -55,10 +69,21 @@ class TurnstileProvider implements WebProvider {
 
   Future<String>? _inFlight;
 
-  /// Creates a web provider backed by Cloudflare Turnstile.
+  /// Creates a Turnstile provider.
+  ///
+  /// Parameters:
+  /// - [siteKey] ([String]): Public Turnstile site key.
+  /// - [action] ([String?]): Optional provider action override.
+  /// - [cData] ([String?]): Optional custom provider data.
+  ///
+  /// Returns: a [TurnstileProvider].
   TurnstileProvider(this.siteKey, {this.action, this.cData});
 
   @override
+  /// Obtains a shared in-flight or new token for [action].
+  ///
+  /// Parameters: [action] ([String]), used unless the configured action wins.
+  /// Returns: a [Future<String>] containing the token.
   Future<String> getAttestationToken(String action) {
     _inFlight ??= attestation
         .getTurnstileToken(siteKey, action: this.action ?? action, cData: cData)
@@ -71,18 +96,31 @@ class TurnstileProvider implements WebProvider {
 @Deprecated('Use TurnstileProvider instead.')
 class CloudflareTurnstileProvider extends TurnstileProvider {
   /// Creates a deprecated Turnstile provider alias.
+  ///
+  /// Parameters: [siteKey] ([String]), [action] ([String?]), and
+  /// [cData] ([String?]) are forwarded to [TurnstileProvider].
+  /// Returns: a [CloudflareTurnstileProvider].
   CloudflareTurnstileProvider(super.siteKey, {super.action, super.cData});
 }
 
-/// hCaptcha provider for web.
+/// Web attestation provider backed by hCaptcha.
 class HCaptchaProvider implements WebProvider {
   /// The hCaptcha site key.
   final String siteKey;
 
-  /// Creates a web provider backed by hCaptcha.
+  /// Creates an hCaptcha provider.
+  ///
+  /// Parameters:
+  /// - [siteKey] ([String]): Public hCaptcha site key.
+  ///
+  /// Returns: an [HCaptchaProvider].
   HCaptchaProvider(this.siteKey);
 
   @override
+  /// Obtains a token for [action].
+  ///
+  /// Parameters: [action] ([String]), the provider action.
+  /// Returns: a [Future<String>] containing the token.
   Future<String> getAttestationToken(String action) {
     return attestation.getHCaptchaToken(siteKey, action);
   }

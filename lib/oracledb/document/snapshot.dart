@@ -99,6 +99,7 @@ class DocumentSnapshot<T extends Object?> {
   ///
   /// Parameters:
   /// - [jsonString]: The JSON data to parse.
+  /// - [db]: The database instance that owns the restored reference.
   ///
   /// Returns:
   /// A [DocumentSnapshot] instance.
@@ -237,15 +238,16 @@ class QueryDocumentSnapshot<T extends Object?> extends DocumentSnapshot<T> {
   ///
   /// Parameters:
   /// - [jsonString]: The JSON data to parse.
+  /// - [db]: The database instance that owns the restored reference.
   ///
   /// Returns:
   /// A [QueryDocumentSnapshot] instance.
   ///
   /// Example:
   /// ```dart
-  /// var snapshot = QueryDocumentSnapshot.fromJson(jsonData);
+  /// var snapshot = QueryDocumentSnapshot.fromJson(jsonData, database);
   /// ```
-  factory QueryDocumentSnapshot.fromJson(dynamic jsonString) {
+  factory QueryDocumentSnapshot.fromJson(dynamic jsonString, dynamic db) {
     dynamic data = jsonString;
     return QueryDocumentSnapshot(
       {
@@ -261,12 +263,12 @@ class QueryDocumentSnapshot<T extends Object?> extends DocumentSnapshot<T> {
       data["ref_type"] == "dualityviewdocument"
           ? DualityViewDocReference(
                   helper: QueryHelper(),
-                  oracledb: FusabaseOracledb.instance,
+                  oracledb: db,
                   path: data["path"])
               .parent
           : DocumentReference(
                   helper: QueryHelper(),
-                  oracledb: FusabaseOracledb.instance,
+                  oracledb: db,
                   path: data["path"])
               .parent,
       SnapshotMetadata(hasPendingWrites: false, isFromCache: false),

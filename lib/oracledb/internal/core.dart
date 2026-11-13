@@ -60,6 +60,9 @@ class FusabaseOracledb {
   Map<String, String> _queryIdMap;
   Map<String, List<String>> _localQueryIdMap;
   Map<String, dynamic> _snapshotControllerMap;
+  Map<String, bool> _initialSnapshotReady;
+  Map<String, List<String>> _initialSnapshotEvents;
+  Map<String, Future<void>> _realtimeEventTails;
 
   FusabaseOracledb({required this.app})
     : this.__logLevel = app.logLevel,
@@ -81,6 +84,9 @@ class FusabaseOracledb {
       _activeRealtimeSubscriptions = {},
       _localQueryIdMap = {},
       _snapshotControllerMap = {},
+      _initialSnapshotReady = {},
+      _initialSnapshotEvents = {},
+      _realtimeEventTails = {},
       _bundleStore = BundleStore(
         "${app.options.appID}_BAAS_BUNDLES",
         "bundles",
@@ -109,11 +115,6 @@ class FusabaseOracledb {
         ),
       ),
     );
-
-    bool uselongPolling = settings.webExperimentalForceLongPolling ?? true;
-    if (settings.webExperimentalForceLongPolling ?? true) {
-      uselongPolling = true;
-    }
     _socketManager = null;
     // if (!uselongPolling) {
     //   createSocketClient(app.auth).then((sManager) {
@@ -309,6 +310,55 @@ class FusabaseOracledb {
     }
   }
 
+  void _removeRealtimeCallbacks(String socketQueryId) {
+    final userLevelQueryId = _queryIdMap.remove(socketQueryId);
+    _activeRealtimeSubscriptions.remove(socketQueryId);
+    _messageQueue.remove(socketQueryId);
+    _initialSnapshotReady.remove(socketQueryId);
+    _initialSnapshotEvents.remove(socketQueryId);
+    _realtimeEventTails.remove(socketQueryId);
+
+    if (userLevelQueryId == null) return;
+    final localQueryIds = _localQueryIdMap.remove(userLevelQueryId) ?? [];
+    for (final localQueryId in localQueryIds) {
+      _snapshotControllerMap.remove(localQueryId);
+    }
+  }
+
+  /// Queues a realtime event until the listener's initial snapshot is stored.
+  /// @nodoc
+  void markInitialSnapshotReady(String queryId) {
+    _initialSnapshotReady[queryId] = true;
+    final events = _initialSnapshotEvents.remove(queryId) ?? [];
+    for (final event in events) {
+      _socketManager?.onMessage?.call(event);
+    }
+  }
+
+  /// @nodoc
+  bool queueInitialSnapshotEvent(String queryId, String message) {
+    final events = _initialSnapshotEvents.putIfAbsent(queryId, () => []);
+    if (events.length >= _maxRealtimeMessageQueueSize) return false;
+    events.add(message);
+    return true;
+  }
+
+  /// @nodoc
+  Future<void> serializeRealtimeEvent(
+    String queryId,
+    Future<void> Function() callback,
+  ) {
+    final previous = _realtimeEventTails[queryId] ?? Future<void>.value();
+    late final Future<void> current;
+    current = previous.catchError((_) {}).then((_) => callback());
+    _realtimeEventTails[queryId] = current;
+    return current.whenComplete(() {
+      if (identical(_realtimeEventTails[queryId], current)) {
+        _realtimeEventTails.remove(queryId);
+      }
+    });
+  }
+
   /// Prepares for snapshot listening by initializing WebSocket if needed.
   /// @nodoc
   Future<void> preSnapshot() async {
@@ -402,6 +452,10 @@ class FusabaseOracledb {
       if (!data.containsKey("queryId")) {
         return;
       }
+      if (data.containsKey("error")) {
+        _removeRealtimeCallbacks(data["queryId"].toString());
+        return;
+      }
       if (data.containsKey("success") || !data.containsKey("changedData")) {
         return;
       }
@@ -416,6 +470,17 @@ class FusabaseOracledb {
       if (userLevelQueryId == "") {
         return;
       }
+
+      if (_initialSnapshotReady[dataQueryId] != true) {
+        queueInitialSnapshotEvent(dataQueryId, message);
+        return;
+      }
+
+      await serializeRealtimeEvent(dataQueryId, () async {
+        if (!_queryIdMap.containsKey(dataQueryId) ||
+            _initialSnapshotReady[dataQueryId] != true) {
+          return;
+        }
 
       dynamic oldData = await _snapStore.getData(userLevelQueryId, this);
 
@@ -433,13 +498,62 @@ class FusabaseOracledb {
         return;
       }
 
-      String rowId = data["rowId"];
-      dynamic changedData = data["changedData"];
-      String? oid = data["changedData"]["OID"];
+      final rowId = data["rowId"];
+      final rawChangedData = data["changedData"] is Map
+          ? Map<String, dynamic>.from(data["changedData"])
+          : <String, dynamic>{};
+      final relationalData = rawChangedData["DATA"];
+      dynamic changedData = relationalData is Map
+          ? Map<String, dynamic>.from(relationalData)
+          : Map<String, dynamic>.from(rawChangedData);
+      final dataMetadata = changedData["_metadata"];
+      final rawMetadata = rawChangedData["_metadata"];
+      final eventMetadataSource = dataMetadata is Map
+          ? dataMetadata
+          : rawMetadata is Map
+          ? rawMetadata
+          : data["_metadata"];
+      final eventMetadata = eventMetadataSource is Map
+          ? Map<String, dynamic>.from(eventMetadataSource)
+          : <String, dynamic>{};
+      final parentOid =
+          changedData["parent_oid"] ?? eventMetadata["PARENT_OID"];
+      final created = eventMetadata["CREATED"];
+      final eventOid =
+          changedData["OID"] ??
+          rawChangedData["OID"] ??
+          eventMetadata["OID"] ??
+          data["OID"] ??
+          data["oid"] ??
+          changedData["id"];
+      String? oid = eventOid?.toString();
       dynamic opr = data["operations"];
       dynamic query = oldData["snap"].query;
 
       changedData.remove("OID");
+      changedData.remove("parent_oid");
+      if (eventMetadata.isNotEmpty) {
+        changedData["_metadata"] ??= eventMetadata;
+        changedData["VERSION"] ??= eventMetadata["VERSION"];
+        changedData["LAST_MODIFIED"] ??= eventMetadata["LAST_MODIFIED"];
+      }
+
+      // Realtime events do not always include the OID. Resolve it from the
+      // cached snapshot when possible; without an ID we cannot safely create
+      // a DocumentSnapshot or apply an update to a collection.
+      if (oid == null && oldData["snap"] is QuerySnapshot) {
+        for (final doc in oldData["snap"]._docs) {
+          if (doc.rowID == rowId) {
+            oid = doc.id;
+            break;
+          }
+        }
+      } else if (oid == null && oldData["snap"] is DocumentSnapshot) {
+        oid = oldData["snap"].id;
+      }
+      if (oid == null) {
+        return;
+      }
 
       if (oldData["snap"] is DocumentSnapshot) {
         DocumentSnapshot newSnap;
@@ -450,8 +564,10 @@ class FusabaseOracledb {
         var asof = null;
         var lastmod = null;
         if (changedData != null && changedData["_metadata"] != null) {
-          ver = changedData["_metadata"]["etag"];
-          asof = changedData["_metadata"]["asof"];
+          ver = changedData["_metadata"]["etag"] ??
+              changedData["_metadata"]["VERSION"];
+          asof = changedData["_metadata"]["asof"] ??
+              changedData["_metadata"]["ASOF"];
           changedData.remove("_metadata");
         }
         if (changedData != null && changedData["LAST_MODIFIED"] != null) {
@@ -470,10 +586,10 @@ class FusabaseOracledb {
             "DOCUMENT": changedData,
             "VERSION": ver,
             "ROWID": rowId,
-            "CREATED": null,
+            "CREATED": created,
             "LAST_MODIFIED": lastmod,
             "SUBCOLLECTION": null,
-            "PARENT_OID": null,
+            "PARENT_OID": parentOid,
             "OID": oid,
             "ASOF": asof,
           };
@@ -489,10 +605,10 @@ class FusabaseOracledb {
             "DOCUMENT": changedData,
             "VERSION": ver,
             "ROWID": rowId,
-            "CREATED": null,
+            "CREATED": created,
             "LAST_MODIFIED": lastmod,
             "SUBCOLLECTION": null,
-            "PARENT_OID": null,
+            "PARENT_OID": parentOid,
             "OID": oid,
             "ASOF": asof,
           };
@@ -539,8 +655,10 @@ class FusabaseOracledb {
         var asof = null;
         var lastmod = null;
         if (changedData != null && changedData["_metadata"] != null) {
-          ver = changedData["_metadata"]["etag"];
-          asof = changedData["_metadata"]["asof"];
+          ver = changedData["_metadata"]["etag"] ??
+              changedData["_metadata"]["VERSION"];
+          asof = changedData["_metadata"]["asof"] ??
+              changedData["_metadata"]["ASOF"];
           changedData.remove("_metadata");
         }
         if (changedData != null && changedData["VERSION"] != null) {
@@ -560,10 +678,10 @@ class FusabaseOracledb {
             "DOCUMENT": changedData,
             "VERSION": ver,
             "ROWID": rowId,
-            "CREATED": null,
+            "CREATED": created,
             "LAST_MODIFIED": lastmod,
             "SUBCOLLECTION": null,
-            "PARENT_OID": null,
+            "PARENT_OID": parentOid,
             "OID": oid,
             "ASOF": asof,
           };
@@ -587,10 +705,10 @@ class FusabaseOracledb {
             "DOCUMENT": changedData,
             "VERSION": ver,
             "ROWID": rowId,
-            "CREATED": null,
+            "CREATED": created,
             "LAST_MODIFIED": lastmod,
             "SUBCOLLECTION": null,
-            "PARENT_OID": null,
+            "PARENT_OID": parentOid,
             "OID": oid,
             "ASOF": asof,
           };
@@ -608,7 +726,10 @@ class FusabaseOracledb {
         }
 
         List<DocumentChange> docChanges = [];
-        List<QueryDocumentSnapshot<dynamic>> docs = oldData["snap"]._docs;
+        List<QueryDocumentSnapshot<dynamic>> docs =
+            List<QueryDocumentSnapshot<dynamic>>.from(oldData["snap"]._docs);
+        final previousDocs =
+            List<QueryDocumentSnapshot<dynamic>>.from(docs);
 
         Map<String, int> indexMap = {};
         for (int i = 0; i < docs.length; i++) {
@@ -627,29 +748,89 @@ class FusabaseOracledb {
               ),
             );
           } else if (opr[i] == "UPDATE") {
-            docs[indexMap[oid] ?? -1] = qDocSnap;
-            docChanges.add(
-              DocumentChange(
-                doc: qDocSnap,
-                newIndex: indexMap[oid] ?? -1,
-                oldIndex: indexMap[oid] ?? -1,
-                type: DocumentChangeType.modified,
-              ),
-            );
+            final existingIndex = indexMap[oid];
+            if (existingIndex != null) {
+              docs[existingIndex] = qDocSnap;
+              docChanges.add(
+                DocumentChange(
+                  doc: qDocSnap,
+                  newIndex: existingIndex,
+                  oldIndex: existingIndex,
+                  type: DocumentChangeType.modified,
+                ),
+              );
+            } else {
+              docs.add(qDocSnap);
+              docChanges.add(
+                DocumentChange(
+                  doc: qDocSnap,
+                  newIndex: docs.length - 1,
+                  oldIndex: -1,
+                  type: DocumentChangeType.added,
+                ),
+              );
+            }
           } else if (opr[i] == "DELETE") {
-            docs.removeAt(indexMap[oid] ?? -1);
-            docChanges.add(
-              DocumentChange(
-                doc: qDocSnap,
-                newIndex: -1,
-                oldIndex: indexMap[oid] ?? -1,
-                type: DocumentChangeType.removed,
-              ),
-            );
+            final existingIndex = indexMap[oid];
+            if (existingIndex != null) {
+              docs.removeAt(existingIndex);
+              docChanges.add(
+                DocumentChange(
+                  doc: qDocSnap,
+                  newIndex: -1,
+                  oldIndex: existingIndex,
+                  type: DocumentChangeType.removed,
+                ),
+              );
+            }
           }
           break;
         }
 
+        docs = query._helper
+            .applyLocalSnapshotConstraints(docs, query)
+            .cast<QueryDocumentSnapshot<dynamic>>();
+        final previousIndex = <String, int>{
+          for (var i = 0; i < previousDocs.length; i++) previousDocs[i].id: i,
+        };
+        final newIndex = <String, int>{
+          for (var i = 0; i < docs.length; i++) docs[i].id: i,
+        };
+        docChanges = [];
+        for (var i = 0; i < previousDocs.length; i++) {
+          if (!newIndex.containsKey(previousDocs[i].id)) {
+            docChanges.add(
+              DocumentChange(
+                doc: previousDocs[i],
+                newIndex: -1,
+                oldIndex: i,
+                type: DocumentChangeType.removed,
+              ),
+            );
+          }
+        }
+        for (var i = 0; i < docs.length; i++) {
+          final oldIndex = previousIndex[docs[i].id];
+          if (oldIndex == null) {
+            docChanges.add(
+              DocumentChange(
+                doc: docs[i],
+                newIndex: i,
+                oldIndex: -1,
+                type: DocumentChangeType.added,
+              ),
+            );
+          } else if (docs[i].id == oid) {
+            docChanges.add(
+              DocumentChange(
+                doc: docs[i],
+                newIndex: i,
+                oldIndex: oldIndex,
+                type: DocumentChangeType.modified,
+              ),
+            );
+          }
+        }
         newSnap._docs = docs;
         newSnap._docChanges = docChanges;
         newSnap._size = docs.length;
@@ -664,6 +845,7 @@ class FusabaseOracledb {
           controller(copyAsMapSnapshot(newSnap));
         }
       }
+      });
     };
     try {
       await _socketManager.connect();

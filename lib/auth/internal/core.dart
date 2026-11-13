@@ -26,30 +26,74 @@
 
 part of "../../auth.dart";
 
+String _normalizeAuthPersistenceHost(String host) {
+  final Uri? uri = Uri.tryParse(host.trim());
+  if (uri == null) {
+    return host.trim();
+  }
+  return uri
+      .replace(
+        scheme: uri.scheme.toLowerCase(),
+        host: uri.host.toLowerCase(),
+      )
+      .toString();
+}
+
+/// Creates a stable namespace for all persisted state belonging to [app].
+///
+/// A named app can share an application identifier with another app while
+/// targeting a different project or service endpoint. Persisted authentication
+/// state must remain isolated in that case.
+String _authPersistenceNamespace(FusabaseApp app) {
+  final identity = jsonEncode(<String, String>{
+    'name': app.name,
+    'app_id': app.options.appID,
+    'project_id': app.options.projectID,
+    'ords_host': _normalizeAuthPersistenceHost(app.options.ordsHost),
+    'auth_type': app.options.authType,
+    'auth_id': app.options.authID ?? '',
+  });
+  return 'baas_auth_${base64UrlEncode(utf8.encode(identity)).replaceAll('=', '')}';
+}
+
+String _authPersistenceStoreName(FusabaseApp app) =>
+    '${_authPersistenceNamespace(app)}_AUTH_STORE';
+
 /// {@template fusabase_auth}
 /// The entry point for accessing authentication features.
 ///
 /// This class provides methods for signing in, signing out, and managing user sessions.
 /// {@endtemplate}
 class FusabaseAuth {
-  /// The options for the FUSABASE app.
+  /// The options of the associated application.
   /// @nodoc
   final FusabaseOptions? options;
 
-  /// The configuration for authentication.
+  /// Internal configuration for the configured authentication service.
+  /// @nodoc
   dynamic config;
 
-  /// The tenant ID.
+  /// The tenant identifier used by the authentication service, when available.
   String? tenantId;
 
-  /// The associated FUSABASE app instance.
+  /// The associated [FusabaseApp] instance.
   final FusabaseApp app;
 
   /// The current authenticated user.
   /// @nodoc
   User? _currentUser;
 
-  /// Gets the current authenticated user.
+  /// @nodoc
+  String? _idTokenHint;
+
+  /// Gets the currently authenticated [User], or `null` when signed out.
+  ///
+  /// Returns a nullable [User] representing the active session.
+  ///
+  /// Example:
+  /// ```dart
+  /// final user = FusabaseAuth.instance.currentUser;
+  /// ```
   User? get currentUser => _currentUser;
 
   /// The authentication helper.
@@ -96,7 +140,7 @@ class FusabaseAuth {
       __logLevel = app.logLevel,
       config = getConfig(app),
       _persistenceManager = PersistenceManager(
-        name: "${app.options.appID}_AUTH_STORE",
+        name: _authPersistenceStoreName(app),
       ),
       _authHelper =
           app.config?.authType == 'base' || app.config?.authType == 'ldap'
@@ -117,13 +161,14 @@ class FusabaseAuth {
       void handleMessage(dynamic data) {
         try {
           dynamic message = jsonDecode(data);
-          if (message["name"] == "${app.options.appID}localLogin") {
+          if (message["name"] == _persistenceEventName('localLogin')) {
             _handleLocalLogin(message["at"], message["rt"]);
-          } else if (message["name"] == "${app.options.appID}indexedDBLogin") {
+          } else if (message["name"] ==
+              _persistenceEventName('indexedDBLogin')) {
             _handleIndexedDBLogin(message["at"], message["rt"]);
-          } else if (message["name"] == "${app.options.appID}otherLogin") {
+          } else if (message["name"] == _persistenceEventName('otherLogin')) {
             _handleOtherLogin();
-          } else if (message["name"] == "${app.options.appID}localLogout") {
+          } else if (message["name"] == _persistenceEventName('localLogout')) {
             _handleLogout();
           }
         } catch (e) {}
@@ -140,6 +185,12 @@ class FusabaseAuth {
           });
     }
   }
+
+  String _persistenceKey(String key) =>
+      '${_authPersistenceNamespace(app)}:$key';
+
+  String _persistenceEventName(String event) =>
+      '${_authPersistenceNamespace(app)}:$event';
 
   /// Factory constructor to get an instance for a specific app.
   ///
@@ -181,7 +232,7 @@ class FusabaseAuth {
       if (_persistenceManager.persistence.type == Persistence.LOCAL) {
         _persistenceManager.makeEvent(
           jsonEncode({
-            "name": "${app.options.appID}localLogin",
+            "name": _persistenceEventName('localLogin'),
             "at": at,
             "rt": rt,
           }),
@@ -190,14 +241,14 @@ class FusabaseAuth {
           Persistence.INDEXED_DB) {
         _persistenceManager.makeEvent(
           jsonEncode({
-            "name": "${app.options.appID}indexedDBLogin",
+            "name": _persistenceEventName('indexedDBLogin'),
             "at": at,
             "rt": rt,
           }),
         );
       } else {
         _persistenceManager.makeEvent(
-          jsonEncode({"name": "${app.options.appID}otherLogin"}),
+          jsonEncode({"name": _persistenceEventName('otherLogin')}),
         );
       }
     }
@@ -220,7 +271,7 @@ class FusabaseAuth {
       if (_persistenceManager.persistence.type == Persistence.LOCAL ||
           _persistenceManager.persistence.type == Persistence.INDEXED_DB) {
         _persistenceManager.makeEvent(
-          jsonEncode({"name": "${app.options.appID}localLogout"}),
+          jsonEncode({"name": _persistenceEventName('localLogout')}),
         );
       }
     }
@@ -228,11 +279,14 @@ class FusabaseAuth {
 
   /// Sets the persistence type for authentication state.
   ///
-  /// [persistence] The persistence type to set.
+  /// [persistence] The [Persistence] value to use. This operation is supported
+  /// only on web platforms.
   ///
   /// Handles switching persistence, migrating tokens if needed.
   ///
-  /// Returns a [Future] that completes with a boolean indicating success.
+  /// Returns a [Future<bool>] that is `true` when the requested storage is
+  /// available and was selected, or `false` when the previous storage remains
+  /// active.
   ///
   /// Example:
   /// ```dart
@@ -254,10 +308,10 @@ class FusabaseAuth {
     }
     try {
       accessToken = await __getIdTokenResult(
-        app.options.appID + globals.accessTokenKey,
+        _persistenceKey(globals.accessTokenKey),
       );
       refreshToken = await __getToken(
-        app.options.appID + globals.refreshTokenKey,
+        _persistenceKey(globals.refreshTokenKey),
       );
     } catch (e) {
       //do nothing
@@ -284,10 +338,10 @@ class FusabaseAuth {
       }
 
       accessToken = await __getIdTokenResult(
-        app.options.appID + globals.accessTokenKey,
+        _persistenceKey(globals.accessTokenKey),
       );
       refreshToken = await __getToken(
-        app.options.appID + globals.refreshTokenKey,
+        _persistenceKey(globals.refreshTokenKey),
       );
     }
 
@@ -406,26 +460,36 @@ class FusabaseAuth {
   /// @nodoc
   Future<void> __initialLogin() async {
     IdTokenResult? access_token = await __getIdTokenResult(
-      app.options.appID + globals.accessTokenKey,
+      _persistenceKey(globals.accessTokenKey),
     );
     String? refresh_token = await __getToken(
-      app.options.appID + globals.refreshTokenKey,
+      _persistenceKey(globals.refreshTokenKey),
     );
+    if (config.authType == 'idcs') {
+      _idTokenHint = await __getToken(
+        _persistenceKey(globals.idTokenHintKey),
+      );
+    }
 
     if ((access_token == null || refresh_token == null) && kIsWeb) {
       _persistenceManager.setSessionPersistence();
       access_token = await __getIdTokenResult(
-        app.options.appID + globals.accessTokenKey,
+        _persistenceKey(globals.accessTokenKey),
       );
       refresh_token = await __getToken(
-        app.options.appID + globals.refreshTokenKey,
+        _persistenceKey(globals.refreshTokenKey),
       );
+      if (config.authType == 'idcs') {
+        _idTokenHint = await __getToken(
+          _persistenceKey(globals.idTokenHintKey),
+        );
+      }
     }
 
     if (access_token == null || refresh_token == null) {
       __updateCurrentUser(null);
       _persistenceManager = PersistenceManager(
-        name: "${app.options.appID}_AUTH_STORE",
+        name: _authPersistenceStoreName(app),
       );
       return;
     }
@@ -445,8 +509,6 @@ class FusabaseAuth {
     _helper._setApp(app);
 
     if (_helper.vaidateAccessToken(access_token) == false) {
-      await __removeCredTokens();
-
       try {
         dynamic tok = await _helper.refreshAccessToken(
           client: createClient(app),
@@ -687,14 +749,29 @@ class FusabaseAuth {
       return false;
     }
     dynamic res1 = await __setToken(
-      app.options.appID + globals.accessTokenKey,
+      _persistenceKey(globals.accessTokenKey),
       credDetails["accessToken"].token,
     );
     dynamic res2 = await __setToken(
-      app.options.appID + globals.refreshTokenKey,
+      _persistenceKey(globals.refreshTokenKey),
       credDetails["refreshToken"],
     );
-    return res1 && res2;
+    dynamic res3 = true;
+    if (config.authType == 'idcs') {
+      final String? idToken = credDetails["idToken"];
+      if (idToken != null && idToken.isNotEmpty) {
+        _idTokenHint = idToken;
+        res3 = await __setToken(
+          _persistenceKey(globals.idTokenHintKey),
+          idToken,
+        );
+      } else {
+        _idTokenHint ??= await __getToken(
+          _persistenceKey(globals.idTokenHintKey),
+        );
+      }
+    }
+    return res1 && res2 && res3;
   }
 
   /// Internal function to remove credential tokens from persistence.
@@ -706,14 +783,21 @@ class FusabaseAuth {
     StackTrace? tokenRemovalStackTrace;
 
     try {
-      await __removeToken(app.options.appID + globals.accessTokenKey);
+      await __removeToken(_persistenceKey(globals.accessTokenKey));
     } catch (error, stackTrace) {
       tokenRemovalError = error;
       tokenRemovalStackTrace = stackTrace;
     }
 
     try {
-      await __removeToken(app.options.appID + globals.refreshTokenKey);
+      await __removeToken(_persistenceKey(globals.refreshTokenKey));
+    } catch (error, stackTrace) {
+      tokenRemovalError ??= error;
+      tokenRemovalStackTrace ??= stackTrace;
+    }
+
+    try {
+      await __removeToken(_persistenceKey(globals.idTokenHintKey));
     } catch (error, stackTrace) {
       tokenRemovalError ??= error;
       tokenRemovalStackTrace ??= stackTrace;
@@ -881,7 +965,8 @@ class FusabaseAuth {
   Future<UserCredential> signInWithPopup(dynamic provider) async {
     await _initFuture;
     dynamic res = await this._authHelper.signInWithBrowserHelper(provider);
-    final authnToken = null;
+    final authnToken =
+        provider is IDCSAuthProvider ? res["id_token"] as String? : null;
 
     final access_token = IdTokenResult(token: res["access_token"]);
     final refresh_token = res["refresh_token"];
@@ -945,6 +1030,7 @@ class FusabaseAuth {
     await __setCredTokens({
       "accessToken": access_token,
       "refreshToken": refresh_token,
+      "idToken": authnToken,
     });
     __updateCurrentUser(user);
     return userCred;
@@ -983,7 +1069,8 @@ class FusabaseAuth {
     );
     await user.getFUSABASEToken();
     var userCred;
-    final authnToken = null;
+    final authnToken =
+        credential is IDCSAuthCredential ? credential.idToken : null;
 
     if (credential is GoogleAuthCredential) {
       userCred = UserCredential(
@@ -1022,6 +1109,7 @@ class FusabaseAuth {
     await __setCredTokens({
       "accessToken": access_token,
       "refreshToken": refresh_token,
+      "idToken": authnToken,
     });
     __updateCurrentUser(user);
     return userCred;
@@ -1044,15 +1132,15 @@ class FusabaseAuth {
     dynamic res = await _authHelper.generatePKCE(provider);
 
     await __setLStoreToken(
-      app.options.appID + globals.loginKey,
+      _persistenceKey(globals.loginKey),
       globals.redirectKey,
     );
     await __setLStoreToken(
-      app.options.appID + globals.providerKey,
+      _persistenceKey(globals.providerKey),
       provider.providerId,
     );
     await __setLStoreToken(
-      app.options.appID + globals.codeVerifierKey,
+      _persistenceKey(globals.codeVerifierKey),
       res["codeVerifier"],
     );
     await _authHelper.signInWithRedirectHelper(provider, res);
@@ -1071,7 +1159,7 @@ class FusabaseAuth {
   Future<UserCredential> getRedirectResult() async {
     await _initFuture;
     String? loginState = await __getLStoreToken(
-      app.options.appID + globals.loginKey,
+      _persistenceKey(globals.loginKey),
     );
     if (loginState != globals.redirectKey) {
       return UserCredential(user: null, credential: null);
@@ -1087,10 +1175,10 @@ class FusabaseAuth {
       );
     }
     String? verifier = await __getLStoreToken(
-      app.options.appID + globals.codeVerifierKey,
+      _persistenceKey(globals.codeVerifierKey),
     );
     String? providerId = await __getLStoreToken(
-      app.options.appID + globals.providerKey,
+      _persistenceKey(globals.providerKey),
     );
 
     if (code == null || verifier == null || providerId == null || code == "") {
@@ -1119,7 +1207,8 @@ class FusabaseAuth {
       }
     }
 
-    final authnToken = null;
+    final authnToken =
+        providerId == IDCSAuthProvider.PROVIDER_ID ? res["id_token"] as String? : null;
 
     final access_token = IdTokenResult(token: res["access_token"]);
     final refresh_token = res["refresh_token"];
@@ -1184,12 +1273,13 @@ class FusabaseAuth {
     await __setCredTokens({
       "accessToken": access_token,
       "refreshToken": refresh_token,
+      "idToken": authnToken,
     });
     __updateCurrentUser(user);
     // if (!kIsWeb) {
     //   await __removeToken(app.options.appID + globals.codeKey);
     // }
-    await __removeLStoreToken(app.options.appID + globals.codeVerifierKey);
+    await __removeLStoreToken(_persistenceKey(globals.codeVerifierKey));
     if (kIsWeb) {
       _authHelper.removeCodeParamFromUrl();
     }
@@ -1208,16 +1298,36 @@ class FusabaseAuth {
   /// ```
   Future<void> signOut() async {
     await _initFuture;
-    try {
-      await _authHelper.performSignOut(currentUser?.refreshToken);
-    } finally {
+    final refreshToken = currentUser?.refreshToken;
+    final idTokenHint = _idTokenHint;
+    if (refreshToken != null && refreshToken.isNotEmpty) {
       try {
-        await __removeCredTokens();
-      } finally {
-        __updateCurrentUser(null);
-        _syncLogoutPersistence();
+        await _authHelper.performSignOut(refreshToken);
+      } catch (error) {
+        if (!_isAlreadyInvalidRefreshTokenError(error)) rethrow;
       }
     }
+    await __removeCredTokens();
+    _idTokenHint = null;
+    __updateCurrentUser(null);
+    _syncLogoutPersistence();
+    if (config.authType == 'idcs' && kIsWeb && idTokenHint != null) {
+      final logoutURL = Uri.parse((config as IDCSConfig).domainURL)
+          .resolve('logout')
+          .toString();
+      await submitIDCSLogoutForm(
+        logoutURL: logoutURL,
+        apiKey: app.options.appID,
+        idTokenHint: idTokenHint,
+      );
+    }
+  }
+
+  bool _isAlreadyInvalidRefreshTokenError(Object error) {
+    if (error is FusabaseAuthException && error.code == '401') return true;
+    return error.toString().toLowerCase().contains('invalid token') ||
+        error.toString().toLowerCase().contains('token expired') ||
+        error.toString().toLowerCase().contains('already revoked');
   }
 
   /// Sends a password reset email.
@@ -1338,13 +1448,14 @@ class FusabaseAuth {
   }
 }
 
-/// Gets the configuration for authentication.
+/// Gets the internal configuration for an application.
 ///
-/// [app] The FUSABASE app instance.
+/// [app] The [FusabaseApp] whose options determine the configuration.
 ///
 /// Determines config based on auth type.
 ///
 /// Returns the configuration object.
+///
 /// @nodoc
 dynamic getConfig(FusabaseApp app) {
   dynamic projectConfig = app.options;
@@ -1357,7 +1468,6 @@ dynamic getConfig(FusabaseApp app) {
       authID: projectConfig.authID ?? "",
       projectID: projectConfig.projectID,
       authType: app.options.authType,
-      idcsDomainURL: projectConfig.idcsDomainURL ?? "",
     );
   }
 

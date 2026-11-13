@@ -27,6 +27,7 @@
 
 import 'storage_manager.dart';
 
+/// @nodoc
 class BundleStore {
   final StorageManager _manager;
 

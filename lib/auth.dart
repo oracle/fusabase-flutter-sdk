@@ -24,7 +24,20 @@
 //
  //-----------------------------------------------------------------------------
 
-/// The authentication module for the Oracle Backend for Firebase Flutter SDK.
+/// Authentication APIs for the Oracle Backend Flutter SDK.
+///
+/// Initialize an application with `core.dart`, then use [FusabaseAuth.instance]
+/// to create sessions, observe session changes, and sign out.
+///
+/// Example:
+/// ```dart
+/// final auth = FusabaseAuth.instance;
+/// final credential = await auth.signInWithEmailAndPassword(
+///   email: 'user@example.com',
+///   password: 'password',
+/// );
+/// print(credential.user?.uid);
+/// ```
 /// {@category auth}
 
 library fusabase.auth;
@@ -38,14 +51,15 @@ import 'package:fusabase_web/fusabase_web.dart';
 
 import './core.dart';
 import './globals.dart' as globals;
+import './auth/util/idcs_logout.dart';
 import './auth/util/persistence/persistence_manager_none.dart'
     if (dart.library.io) './auth/util/persistence/persistence_manager_android.dart'
     if (dart.library.html) './auth/util/persistence/persistence_manager_web.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 
-export './auth/util/persistence/persistence_manager_none.dart' 
-    if (dart.library.io) './auth/util/persistence/persistence_manager_android.dart' 
+export './auth/util/persistence/persistence_manager_none.dart'
+    if (dart.library.io) './auth/util/persistence/persistence_manager_android.dart'
     if (dart.library.html) './auth/util/persistence/persistence_manager_web.dart';
 
 // Main index file for the authentication module.

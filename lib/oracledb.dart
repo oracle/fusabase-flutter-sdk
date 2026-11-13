@@ -24,7 +24,17 @@
 //
 //-----------------------------------------------------------------------------
 
-/// The Oracle Database module for the Oracle Backend for Firebase Flutter SDK.
+/// Database APIs for the Oracle Backend Flutter SDK.
+///
+/// Use [FusabaseOracledb.instance] to obtain references, build queries, and
+/// perform document reads and writes.
+///
+/// Example:
+/// ```dart
+/// final db = FusabaseOracledb.instance;
+/// final snapshot = await db.collection('users').get();
+/// print(snapshot.docs.length);
+/// ```
 /// {@category oracledb}
 library fusabase.oracledb;
 

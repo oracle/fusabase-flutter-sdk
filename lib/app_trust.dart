@@ -25,6 +25,16 @@
 //-----------------------------------------------------------------------------
 
 /// Public App Trust APIs for the Fusabase Flutter SDK.
+///
+/// Activate an [FusabaseAppTrust] instance with a provider before requesting
+/// tokens for protected operations.
+///
+/// Example:
+/// ```dart
+/// await FusabaseAppTrust.instance.activate(
+///   webProvider: ReCaptchaV3Provider('site-key'),
+/// );
+/// ```
 /// {@category app-trust}
 library fusabase.app_trust;
 

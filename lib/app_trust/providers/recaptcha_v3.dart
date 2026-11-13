@@ -28,15 +28,33 @@
 
 part of '../../app_trust.dart';
 
-/// reCAPTCHA v3 App Trust provider for web.
+/// Web attestation provider backed by reCAPTCHA v3.
+///
+/// Example:
+/// ```dart
+/// await FusabaseAppTrust.instance.activate(
+///   webProvider: ReCaptchaV3Provider('site-key'),
+/// );
+/// ```
 class ReCaptchaV3Provider implements WebProvider {
   /// The reCAPTCHA site key.
   final String siteKey;
 
-  /// Creates a web provider backed by reCAPTCHA v3.
+  /// Creates a reCAPTCHA v3 provider.
+  ///
+  /// Parameters:
+  /// - [siteKey] ([String]): Public site key issued for the web application.
+  ///
+  /// Returns: a [ReCaptchaV3Provider].
   ReCaptchaV3Provider(this.siteKey);
 
   @override
+  /// Obtains a token for [action].
+  ///
+  /// Parameters:
+  /// - [action] ([String]): Provider action.
+  ///
+  /// Returns: a [Future<String>] containing the token.
   Future<String> getAttestationToken(String action) {
     return attestation.getReCaptchaV3Token(siteKey, action);
   }

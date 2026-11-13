@@ -26,7 +26,14 @@
 
 part of '../core.dart';
 
-/// The default name used for instances of [FusabaseApp].
+/// The name assigned to an app when no explicit name is supplied.
+///
+/// Type: [String].
+///
+/// Example:
+/// ```dart
+/// final app = Fusabase.app(name: defaultFusabaseAppName);
+/// ```
 const String defaultFusabaseAppName = globals.defaultAppName;
 
 const String _appTrustHeader = 'X-BAAS-AppCheck';
@@ -147,10 +154,6 @@ String? _getAppTrustToken(FusabaseApp? app) {
   if (app._appTrustTokenPersisted != null &&
       app._appTrustTokenPersisted!.isNotEmpty) {
     return app._appTrustTokenPersisted;
-  }
-  if (app.options.appTrustToken != null &&
-      app.options.appTrustToken!.isNotEmpty) {
-    return app.options.appTrustToken;
   }
   return null;
 }
@@ -349,10 +352,24 @@ http.Client createClient([FusabaseApp? app]) {
   return _FusabaseHttpClient(http.Client(), app);
 }
 
-/// Manages [FusabaseApp] instances.
+/// Creates, retrieves, and lists named [FusabaseApp] instances.
 ///
-/// Provides factory methods for initializing and retrieving [FusabaseApp] instances.
-/// This is the entry point for accessing Fusabase functionality.
+/// Example:
+/// ```dart
+/// final app = Fusabase.initializeApp(
+///   options: FusabaseOptions({
+///     'ords_host': 'https://example.com/ords/schema/',
+///     'schema': 'schema',
+///     'app_id': 'app-id',
+///     'project_id': 'project-id',
+///     'objs_type': 'oci-objs',
+///     'backend_type': 'COLLECTION',
+///     'storage_bucket': 'bucket-name',
+///     'auth_type': 'base',
+///   }),
+/// );
+/// final sameApp = Fusabase.app();
+/// ```
 class Fusabase {
   /// Internal storage for [FusabaseApp] instances.
   static final Map<String, dynamic> _apps = {};
@@ -365,9 +382,10 @@ class Fusabase {
   /// no name specified).
   ///
   /// Parameters:
-  ///
+  /// - [name] ([String]): Registered app name. Defaults to
+  ///   [defaultFusabaseAppName].
   /// Returns:
-  /// - The [FusabaseApp] instance.
+  /// - The registered [FusabaseApp].
   ///
   /// Throws:
   /// - [Exception] if no app with the given name exists.
@@ -384,10 +402,17 @@ class Fusabase {
     return app;
   }
 
-  /// A list of all initialized [FusabaseApp] instances.
+  /// Lists all initialized [FusabaseApp] instances.
   ///
   /// Returns:
-  /// - A [List] of all [FusabaseApp] instances.
+  /// - A [List<FusabaseApp>] of all registered apps.
+  ///
+  /// Example:
+  /// ```dart
+  /// for (final app in Fusabase.apps) {
+  ///   print(app.name);
+  /// }
+  /// ```
   static List<FusabaseApp> get apps {
     List<FusabaseApp> appsList = [];
     _apps.values.forEach((value) => appsList.add(value));
@@ -413,26 +438,55 @@ class Fusabase {
   ///
   /// If [name] is not provided, the default name is used. If the default app
   /// does not yet exist, it will also be created with the same options.
+  /// Only the `COLLECTION` backend type is supported; `RELATIONAL` is rejected.
   ///
   /// Parameters:
-  /// - [name]: Optional name for the app.
-  /// - [options]: The [FusabaseOptions] to configure the app.
+  /// - [name] ([String]): Optional app name. Defaults to `OracleDefaultApp`.
+  /// - [options] ([FusabaseOptions]): Connection and service configuration.
   ///
   /// Returns:
   /// - The newly initialized [FusabaseApp].
   ///
+  /// Throws:
+  /// - [ArgumentError] when `backend_type` is not `COLLECTION`.
+  ///
+  /// See [FusabaseOptions] for all supported configuration keys.
+  ///
   /// Example:
   /// ```dart
-  /// final options = FusabaseOptions(
-  ///   ordsHost: 'https://example.com',
-  ///   // other options
+  /// final app = Fusabase.initializeApp(
+  ///   name: 'my-app',
+  ///   options: FusabaseOptions({
+  ///     'ords_host': 'https://example.com/ords/schema/',
+  ///     'schema': 'schema',
+  ///     'app_id': 'app-id',
+  ///     'project_id': 'project-id',
+  ///     'objs_type': 'oci-objs',
+  ///     'backend_type': 'COLLECTION',
+  ///     'storage_bucket': 'bucket-name',
+  ///     'auth_type': 'base',
+  ///   }),
   /// );
-  /// final app = Fusabase.initializeApp(options: options, name: 'my-app');
   /// ```
   static FusabaseApp initializeApp({
     String name = globals.defaultAppName,
     required FusabaseOptions options,
   }) {
+    if (options.backendType == 'RELATIONAL') {
+      throw ArgumentError.value(
+        options.backendType,
+        'backend_type',
+        'RELATIONAL backend_type is not supported by this SDK.',
+      );
+    }
+    if (options.backendType != 'COLLECTION') {
+      throw ArgumentError.value(
+        options.backendType,
+        'backend_type',
+        'backend_type must be COLLECTION.',
+      );
+    }
+
     void inheritAppTrustState(FusabaseApp target, FusabaseApp source) {
       if (source.options.projectID != target.options.projectID ||
           source.options.appID != target.options.appID) {
@@ -484,7 +538,9 @@ class Fusabase {
   }
 }
 
-/// An app provides configuration for a particular Fusabase project.
+/// Holds configuration and service instances for one project.
+///
+/// Create instances with [Fusabase.initializeApp].
 ///
 class FusabaseApp {
   /// The name of this app.
@@ -495,10 +551,13 @@ class FusabaseApp {
 
   /// The configuration options for this app.
   FusabaseOptions _options;
+  /// Authentication service instance associated with this app, when created.
   dynamic auth;
+
+  /// Local data-store instance associated with this app, when created.
   dynamic store;
 
-  /// Storage service.
+  /// Storage service instance associated with this app, when created.
   dynamic storage;
 
   /// Internal configuration.
@@ -511,21 +570,24 @@ class FusabaseApp {
   /// Constructs a new [FusabaseApp] with the provided [name] and [options].
   ///
   /// Parameters:
-  /// - [name]: The name for the app.
-  /// - [options]: The configuration options.
+  /// - [name] ([String]): The name for the app.
+  /// - [options] ([FusabaseOptions]): The configuration options.
+  ///
+  /// Returns:
+  /// - A configured [FusabaseApp].
   FusabaseApp({required String name, required FusabaseOptions options})
     : _name = name,
       _options = options,
       _logLevel = globals.LogLevel.silent,
-      _appTrustToken = options.appTrustToken,
-      _appTrustTokenPersisted = options.appTrustToken {
+      _appTrustToken = null,
+      _appTrustTokenPersisted = null {
     _config = FusabaseConfig(
       objsType: options.objsType,
       storageBucket: options.storageBucket,
       projectID: options.projectID,
       authType: options.authType,
       authID: options.authID,
-      idcsDomainURL: options.idcsDomainURL,
+      backendType: options.backendType,
     );
   }
 
@@ -591,10 +653,15 @@ class FusabaseApp {
   @override
   String toString() => '$FusabaseApp($name)';
 
-  /// Deletes the app and releases associated resources.
+  /// Removes the app from the global registry and releases service references.
   ///
   /// Returns:
-  /// - A [Future] that completes when deletion is done.
+  /// - A [Future<void>] that completes when deletion is done.
+  ///
+  /// Example:
+  /// ```dart
+  /// await app.delete();
+  /// ```
   Future<void> delete() async {
     auth = null;
     store = null;
@@ -614,13 +681,61 @@ class FusabaseApp {
   }
 }
 
-/// The set of integrated products and configuration for an app.
+/// Defines connection and service settings for an app.
+///
+/// Pass these keys to the [FusabaseOptions] constructor:
+///
+/// | Key | Type | Required | Description |
+/// | --- | --- | --- | --- |
+/// | `ords_host` | `String` | Yes | Base ORDS URL, including any required path prefix. |
+/// | `schema` | `String` | Yes | Database schema name. |
+/// | `app_id` | `String` | Yes | Application identifier. |
+/// | `project_id` | `String` | Yes | Project identifier used by service endpoints. |
+/// | `objs_type` | `String` | Yes | Object storage type. Use `dbfs` for DBFS; any other value selects `oci-objs`. |
+/// | `backend_type` | `String` | Yes | Backend data model. This SDK supports only `COLLECTION`; `RELATIONAL` is rejected by [Fusabase.initializeApp]. |
+/// | `storage_bucket` | `String` | Yes | Default object storage bucket. |
+/// | `auth_type` | `String` | Yes | Authentication mode, such as `base`, `ldap`, or `idcs`. `e-idcs` is normalized to `idcs`. |
+/// | `auth_id` | `String?` | No | Optional authentication-service identifier. |
+/// | `app_type` | `String` | No | Application type. Defaults to `web`. |
+/// | `app_name` | `String?` | No | Optional application-display name. |
+/// | `use_socket` | `bool` | No | Enables WebSocket transport for realtime listeners. Defaults to `true`. |
+/// | `long_polling_interval` | `int` | No | Long-polling interval in whole seconds. Values outside 5–300 use the default of 29 seconds. |
+/// | `upload_chunk_size` | `int` | No | Upload chunk size in bytes. Defaults to 16 MiB. |
+/// | `max_upload_size` | `int` | No | Maximum upload size in bytes. Defaults to 100 MiB. `upload_max_size` and `maxUploadSize` are also accepted. |
+///
+/// Example:
+/// ```dart
+/// final options = FusabaseOptions({
+///   'ords_host': 'https://example.com',
+///   'app_id': 'my-app-id',
+///   'project_id': 'my-project',
+///   'schema': 'my_schema',
+///   'objs_type': 'oci-objs',
+///   'backend_type': 'COLLECTION',
+///   'storage_bucket': 'my-bucket',
+///   'auth_type': 'idcs',
+/// });
+/// ```
 ///
 class FusabaseOptions {
+  /// Smallest accepted long-polling interval, in seconds.
   static const int minLongPollingIntervalSeconds = 5;
+  /// Largest accepted long-polling interval, in seconds.
   static const int maxLongPollingIntervalSeconds = 300;
+  /// Default long-polling interval, in seconds.
   static const int defaultLongPollingIntervalSeconds = 29;
 
+  /// Returns a supported whole-second polling interval.
+  ///
+  /// Parameters:
+  /// - [interval] (`dynamic`): Candidate interval in seconds.
+  ///
+  /// Returns an [int] within the supported range, or the default interval.
+  ///
+  /// Example:
+  /// ```dart
+  /// final seconds = FusabaseOptions.normalizeLongPollingInterval(15);
+  /// ```
   static int normalizeLongPollingInterval(dynamic interval) {
     if (interval is int &&
         interval >= minLongPollingIntervalSeconds &&
@@ -630,6 +745,19 @@ class FusabaseOptions {
     return defaultLongPollingIntervalSeconds;
   }
 
+  /// Returns a supported whole-second polling duration.
+  ///
+  /// Parameters:
+  /// - [interval] ([Duration?]): Candidate duration; `null` uses the default.
+  ///
+  /// Returns a normalized [Duration].
+  ///
+  /// Example:
+  /// ```dart
+  /// final interval = FusabaseOptions.normalizeLongPollingDuration(
+  ///   const Duration(seconds: 15),
+  /// );
+  /// ```
   static Duration normalizeLongPollingDuration(Duration? interval) {
     if (interval == null) {
       return const Duration(seconds: defaultLongPollingIntervalSeconds);
@@ -661,6 +789,9 @@ class FusabaseOptions {
   /// The objects type.
   final String objsType;
 
+  /// The supported backend data model.
+  final String backendType;
+
   /// The project ID.
   final String projectID;
 
@@ -673,31 +804,24 @@ class FusabaseOptions {
   /// Optional authentication ID.
   String? authID;
 
-  /// Optional app trust token.
-  String? appTrustToken;
-
-  /// Optional IDCS domain URL for IDCS logout.
-  String? idcsDomainURL;
-
-  /// The Oracle DB version to use.
-  int useOracledbVersion;
-
-  /// Web socket config
+  /// Whether realtime listeners may use WebSocket transport.
   bool useSocket;
 
   /// Long polling interval.
   int longPollingInterval;
 
-  /// Upload chunk size
+  /// Upload chunk size in bytes.
   int chunkSize;
 
-  /// Maximum upload size in bytes
+  /// Maximum upload size in bytes.
   int maxUploadSize;
 
   /// Constructs [FusabaseOptions] from a [Map].
   ///
   /// Parameters:
-  /// - [options]: A map with configuration keys and values.
+  /// - [options] ([Map<String, dynamic>]): Configuration keys and values.
+  ///
+  /// Returns a configured [FusabaseOptions] instance.
   FusabaseOptions(Map<String, dynamic> options)
     : ordsHost = options["ords_host"],
       appType = (options["app_type"] ?? "web").toString(),
@@ -707,13 +831,14 @@ class FusabaseOptions {
       projectID = options["project_id"],
       objsType =
           options["objs_type"].toLowerCase() == 'dbfs' ? 'dbfs' : 'oci-objs',
+      backendType = options["backend_type"].toString().toUpperCase(),
       storageBucket = options["storage_bucket"],
-      authType = options["auth_type"].toLowerCase(),
+      authType =
+          options["auth_type"].toString().toLowerCase() == 'e-idcs'
+              ? 'idcs'
+              : options["auth_type"].toString().toLowerCase(),
       authID = options["auth_id"],
-      appTrustToken = options["appTrustToken"] ?? options["appTrustToken"],
-      useOracledbVersion = options["version"] ?? 2,
-      idcsDomainURL = options["idcs_domain_url"],
-      useSocket = options["use_socket"] ?? false,
+      useSocket = options["use_socket"] ?? true,
       longPollingInterval = normalizeLongPollingInterval(
         options["long_polling_interval"],
       ),
@@ -727,7 +852,7 @@ class FusabaseOptions {
   /// A string representation of this options instance.
   @override
   String toString() {
-    return '$FusabaseOptions(ordsHost: $ordsHost, appType: $appType, appName: $appName, project:$schema, projectID:$projectID, appId:$appID, objsType:$objsType, storageBucket:$storageBucket, authType:$authType, authID:$authID, hasAppTrustToken:${appTrustToken != null && appTrustToken!.isNotEmpty}, idcsDomainURL:$idcsDomainURL, chunkSize:$chunkSize, maxUploadSize:$maxUploadSize )';
+    return '$FusabaseOptions(ordsHost: $ordsHost, appType: $appType, appName: $appName, project:$schema, projectID:$projectID, appId:$appID, objsType:$objsType, backendType:$backendType, storageBucket:$storageBucket, authType:$authType, authID:$authID, chunkSize:$chunkSize, maxUploadSize:$maxUploadSize )';
   }
 
   /// Test whether [other] is equal to this instance.
@@ -742,7 +867,7 @@ class FusabaseOptions {
   }
 }
 
-/// Internal configuration derived from [FusabaseOptions].
+/// Runtime configuration derived from [FusabaseOptions].
 class FusabaseConfig {
   /// Type of objects.
   String objsType;
@@ -759,29 +884,31 @@ class FusabaseConfig {
   /// Authentication ID.
   String? authID;
 
-  /// IDCS domain URL for IDCS logout.
-  String? idcsDomainURL;
+  /// Backend data model.
+  String backendType;
 
   /// Constructs an [FusabaseConfig].
   ///
   /// Parameters:
-  /// - [objsType]
-  /// - [storageBucket]
-  /// - [projectID]
-  /// - [authType]
-  /// - [authID]
-  /// - [idcsDomainURL]
+  /// - [objsType] ([String]): Object-storage implementation type.
+  /// - [storageBucket] ([String]): Storage bucket name.
+  /// - [projectID] ([String]): Project identifier.
+  /// - [authType] ([String]): Authentication mechanism identifier.
+  /// - [authID] ([String?]): Optional authentication identifier.
+  /// - [backendType] ([String]): Backend data model.
+  ///
+  /// Returns a [FusabaseConfig] instance.
   FusabaseConfig({
     required this.objsType,
     required this.storageBucket,
     required this.projectID,
     required this.authType,
     this.authID,
-    this.idcsDomainURL,
+    required this.backendType,
   });
 }
 
-/// An exception thrown by Fusabase operations.
+/// Describes an error raised by an SDK operation.
 ///
 class FusabaseException implements Exception {
   /// The error message.
@@ -799,10 +926,12 @@ class FusabaseException implements Exception {
   /// Constructs an [FusabaseException].
   ///
   /// Parameters:
-  /// - [message]
-  /// - [code]
-  /// - [name]
-  /// - [stackTrace]
+  /// - [message] ([String?]): Human-readable explanation.
+  /// - [code] ([String?]): Machine-readable error code.
+  /// - [name] ([String?]): Optional error name.
+  /// - [stackTrace] ([StackTrace?]): Captured failure stack trace.
+  ///
+  /// Returns a [FusabaseException] instance.
   FusabaseException({this.message, this.code, this.name, this.stackTrace});
 
   /// The hash code for this exception.

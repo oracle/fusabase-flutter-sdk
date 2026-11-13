@@ -28,6 +28,7 @@ import 'dart:html';
 
 import "../../../auth.dart";
 
+/// @nodoc
 class LocalPersistence {
   dynamic _storage;
 

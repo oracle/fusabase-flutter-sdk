@@ -27,11 +27,11 @@
 
 
 import 'dart:html' as html;
-
+/// @nodoc
 String? getStoredBrowserInstanceId(String key) {
   return html.window.localStorage[key];
 }
-
+/// @nodoc
 void setStoredBrowserInstanceId(String key, String value) {
   html.window.localStorage[key] = value;
 }

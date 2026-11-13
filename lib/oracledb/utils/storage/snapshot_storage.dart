@@ -28,6 +28,7 @@
 import '../../../oracledb.dart';
 import 'storage_manager.dart';
 
+/// @nodoc
 class SnapshotStorage {
   final StorageManager _manager;
 

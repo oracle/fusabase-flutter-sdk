@@ -164,7 +164,17 @@ Future<_AppTrustTokenResult?> _loadPersistedToken(_AppTrustState state) async {
   return result;
 }
 
-/// Entry point for App Trust operations.
+/// Manages app-attestation tokens for a [FusabaseApp].
+///
+/// Use [activate] with a web provider, then call [getToken] when a token is
+/// needed. Listen to [onTokenChange] to receive cached and refreshed tokens.
+///
+/// Example:
+/// ```dart
+/// final trust = FusabaseAppTrust.instance;
+/// await trust.activate(webProvider: ReCaptchaV3Provider('site-key'));
+/// final token = await trust.getToken();
+/// ```
 class FusabaseAppTrust {
   FusabaseApp app;
   _AppTrustState? _state;
@@ -181,8 +191,12 @@ class FusabaseAppTrust {
     }
   }
 
-  /// Rebinds this App Trust instance to a newly initialized app with the same
-  /// name while preserving the active provider and cached token.
+  /// Rebinds this manager to a replacement app with the same name.
+  ///
+  /// Parameters:
+  /// - [app] ([FusabaseApp]): Newly initialized app to use.
+  ///
+  /// Returns: nothing.
   void useApp(FusabaseApp app) {
     if (identical(this.app, app)) {
       app.setInternalAppTrustInstance(this);
@@ -205,12 +219,24 @@ class FusabaseAppTrust {
     }
   }
 
-  /// Returns the App Trust instance for the default Fusabase app.
+  /// Returns the manager for the default app.
+  ///
+  /// Returns: a [FusabaseAppTrust] instance.
   static FusabaseAppTrust get instance {
     return instanceFor(app: Fusabase.app());
   }
 
-  /// Returns the App Trust instance for a specific app.
+  /// Returns the manager for a specific app.
+  ///
+  /// Parameters:
+  /// - [app] ([FusabaseApp]): App whose manager is requested.
+  ///
+  /// Returns: a shared [FusabaseAppTrust] instance for [app].
+  ///
+  /// Example:
+  /// ```dart
+  /// final trust = FusabaseAppTrust.instanceFor(app: app);
+  /// ```
   static FusabaseAppTrust instanceFor({required FusabaseApp app}) {
     final existing = _instances[app.name];
     if (existing == null) {
@@ -222,7 +248,14 @@ class FusabaseAppTrust {
     return existing;
   }
 
-  /// Emits token changes similarly to App Trust.
+  /// Streams the current and subsequently refreshed app-attestation tokens.
+  ///
+  /// Returns: a [Stream<String>]; non-web platforms return an empty stream.
+  ///
+  /// Example:
+  /// ```dart
+  /// trust.onTokenChange.listen(print);
+  /// ```
   Stream<String> get onTokenChange {
     if (!kIsWeb) {
       return const Stream<String>.empty();
@@ -233,15 +266,26 @@ class FusabaseAppTrust {
   Stream<String> _onTokenChange() async* {
     final currentToken =
         app.internalAppTrustToken ??
-        app.internalPersistedAppTrustToken ??
-        app.options.appTrustToken;
+        app.internalPersistedAppTrustToken;
     if (currentToken != null && currentToken.isNotEmpty) {
       yield currentToken;
     }
     yield* _tokenController.stream;
   }
 
-  /// Activates App Trust for the current app.
+  /// Activates attestation for this app.
+  ///
+  /// Parameters:
+  /// - [androidProvider] ([AndroidProvider?]): Reserved native provider choice.
+  /// - [appleProvider] ([AppleProvider?]): Reserved native provider choice.
+  /// - [webProvider] ([WebProvider?]): Required provider on web.
+  ///
+  /// Returns: a [Future<void>] that completes after cached-token loading.
+  ///
+  /// Example:
+  /// ```dart
+  /// await trust.activate(webProvider: TurnstileProvider('site-key'));
+  /// ```
   Future<void> activate({
     AndroidProvider? androidProvider,
     AppleProvider? appleProvider,
@@ -262,17 +306,22 @@ class FusabaseAppTrust {
     await _loadPersistedToken(_state!);
   }
 
-  /// Retrieves the current App Trust token.
+  /// Retrieves an app-attestation token.
+  ///
+  /// Parameters:
+  /// - [forceRefresh] ([bool]): When `true`, obtains a fresh token instead of
+  ///   using a valid cached token.
+  ///
+  /// Returns: a [Future<String?>] containing a token on web, or `null` on
+  /// non-web platforms.
+  ///
+  /// Example:
+  /// ```dart
+  /// final token = await trust.getToken(forceRefresh: true);
+  /// ```
   Future<String?> getToken([bool forceRefresh = false]) async {
     if (!kIsWeb) {
       return null;
-    }
-
-    final configuredToken = app.options.appTrustToken;
-    if (!forceRefresh &&
-        configuredToken != null &&
-        configuredToken.isNotEmpty) {
-      return configuredToken;
     }
 
     final state = _state;

@@ -28,6 +28,7 @@ import '../../../auth.dart';
 import '../storage/in_memory_storage.dart';
 import '../storage/shared_preferences_storage.dart';
 
+/// @nodoc
 class PersistenceManager {
   dynamic persistence;
 

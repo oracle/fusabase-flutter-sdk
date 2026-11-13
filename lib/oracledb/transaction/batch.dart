@@ -102,6 +102,7 @@ class WriteBatch {
         {"method": "update", "docRef": docRef, "data": data, "options": null});
   }
 
+  /// @nodoc
   /// Internal method to execute queued operations.
   ///
   /// Returns:

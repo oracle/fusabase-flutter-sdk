@@ -26,6 +26,7 @@
 
 part of "../../auth.dart";
 
+/// @nodoc
 class Config {
   String authType;
 
@@ -34,6 +35,7 @@ class Config {
   Config({required this.authType, required this.projectID});
 }
 
+/// @nodoc
 class ONPREMConfig extends Config {
   String authID;
 
@@ -87,29 +89,15 @@ class ONPREMConfig extends Config {
 
 /// @nodoc
 class IDCSConfig extends ONPREMConfig {
-  String idcsDomainURL;
-
-  static String LOGOUT_REST_EP = "/oauth2/v1/userlogout";
-
   IDCSConfig({
     required String domainURL,
     required String authID,
     required String projectID,
     required String authType,
-    required String idcsDomainURL,
-  }) : idcsDomainURL = idcsDomainURL.replaceAll(RegExp(r'/+$'), ''),
-       super(
+  }) : super(
          domainURL: domainURL,
          authID: authID,
          projectID: projectID,
          authType: authType,
-       ) {
-    if (this.idcsDomainURL.isEmpty) {
-      throw AuthUtils.authErrorHandler(
-        status: globals.ErrorMap[globals.ErrorCode.INVALID_ARGS] ?? 999,
-        message: "IDCS domain URL is not provided.",
-        authType: "IDCS",
-      );
-    }
-  }
+       );
 }

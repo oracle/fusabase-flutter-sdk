@@ -32,6 +32,145 @@ class QueryHelper {
 
   QueryHelper() : _module = "database";
 
+  dynamic _fieldValue(dynamic data, dynamic field, [dynamic oid]) {
+    if (field == 'OID' || field == FieldPath.documentId.getPath()) return oid;
+    dynamic value = data;
+    for (final part in '$field'.split('.')) {
+      if (value is Map) {
+        value = value[part];
+      } else {
+        return null;
+      }
+    }
+    return value;
+  }
+
+  int _compare(dynamic left, dynamic right) {
+    if (identical(left, right) || left == right) return 0;
+    if (left == null) return -1;
+    if (right == null) return 1;
+    if (left is num && right is num) return left.compareTo(right);
+    if (left is Timestamp && right is Timestamp) return left.compareTo(right);
+    if (left is DateTime && right is DateTime) return left.compareTo(right);
+    if (left is Comparable && left.runtimeType == right.runtimeType) {
+      return left.compareTo(right);
+    }
+    return '$left'.compareTo('$right');
+  }
+
+  bool _matchesCondition(dynamic data, dynamic oid, Map condition) {
+    final value = _fieldValue(data, condition['field'], oid);
+    final expected = condition['value'];
+    switch (condition['op']) {
+      case '=':
+        return compareValues(value, expected);
+      case '!=':
+        return !compareValues(value, expected);
+      case '<':
+        return _compare(value, expected) < 0;
+      case '<=':
+        return _compare(value, expected) <= 0;
+      case '>':
+        return _compare(value, expected) > 0;
+      case '>=':
+        return _compare(value, expected) >= 0;
+      case 'in':
+        return expected is Iterable && expected.any((item) => compareValues(value, item));
+      case 'not in':
+        return expected is Iterable && !expected.any((item) => compareValues(value, item));
+      case 'array-contains':
+        return value is Iterable && value.any((item) => compareValues(item, expected));
+      case 'array-contains-any':
+        return value is Iterable && expected is Iterable &&
+            value.any((item) => expected.any((expectedItem) => compareValues(item, expectedItem)));
+      case 'is NULL':
+        return expected == false ? value != null : value == null;
+      default:
+        return true;
+    }
+  }
+
+  bool _matchesConditions(dynamic data, dynamic oid, List<dynamic> conditions) {
+    if (conditions.isEmpty) return true;
+    var index = 0;
+    late bool Function() parseOr;
+    late bool Function() parseAnd;
+    late bool Function() parsePrimary;
+
+    parseOr = () {
+      var result = parseAnd();
+      while (index < conditions.length && conditions[index]['op'] == 'OR') {
+        index++;
+        result = parseAnd() || result;
+      }
+      return result;
+    };
+
+    parseAnd = () {
+      var result = parsePrimary();
+      while (index < conditions.length &&
+          conditions[index]['op'] != ')' &&
+          conditions[index]['op'] != 'OR') {
+        if (conditions[index]['op'] == 'AND') index++;
+        result = parsePrimary() && result;
+      }
+      return result;
+    };
+
+    parsePrimary = () {
+      if (index >= conditions.length) return true;
+      final condition = conditions[index++];
+      if (condition['op'] == '(') {
+        final result = parseOr();
+        if (index < conditions.length && conditions[index]['op'] == ')') index++;
+        return result;
+      }
+      return _matchesCondition(data, oid, Map.from(condition));
+    };
+
+    return parseOr();
+  }
+
+  List<dynamic> applyLocalSnapshotConstraints(List<dynamic> docs, dynamic query) {
+    final constrained = docs.where((doc) =>
+        _matchesConditions(doc._data, doc.id, query._conditions)).toList();
+    _sortAndLimit(
+      constrained,
+      query,
+      (doc, field) => _fieldValue(doc._data, field, doc.id),
+    );
+    return constrained;
+  }
+
+  void _sortAndLimit(
+    List<dynamic> values,
+    dynamic query,
+    dynamic Function(dynamic value, dynamic field) valueForField,
+  ) {
+    if (query._explicitOrder.isNotEmpty) {
+      final indexed = values.asMap().entries.toList();
+      indexed.sort((left, right) {
+        for (final order in query._explicitOrder) {
+          final comparison = _compare(
+            valueForField(left.value, order['field']),
+            valueForField(right.value, order['field']),
+          );
+          if (comparison != 0) {
+            return order['direction'] == 'desc' ? -comparison : comparison;
+          }
+        }
+        return left.key.compareTo(right.key);
+      });
+      final sortedValues = <dynamic>[
+        for (final entry in indexed) entry.value,
+      ];
+      values.clear();
+      for (final value in sortedValues) {
+        values.add(value);
+      }
+    }
+  }
+
 /// @nodoc
   List<String> makePath(List<String> paths) {
     List<String> newPath = List.from(paths);
@@ -67,7 +206,6 @@ class QueryHelper {
     dynamic body = {
       "conditions": query is DocumentReference ? [] : query._conditions,
       "column": query is DocumentReference ? [] : query._column,
-      "explicitOrder": query is DocumentReference ? [] : query._explicitOrder,
       "joins": !jCon ? [] : query._joins[0],
       "col_group": query is DocumentReference ? [] : query._col_group,
       "limit": query is DocumentReference ? 0 : query._limit,
