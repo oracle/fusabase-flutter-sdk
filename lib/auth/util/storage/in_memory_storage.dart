@@ -26,6 +26,7 @@
 
 import "../../../auth.dart";
 
+/// @nodoc
 class InMemoryPersistence {
   dynamic _storage;
 

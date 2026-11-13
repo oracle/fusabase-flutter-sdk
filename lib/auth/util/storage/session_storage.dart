@@ -27,6 +27,7 @@
 import 'dart:html';
 import '../../../auth.dart';
 
+/// @nodoc
 class SessionPersistence {
   dynamic _storage;
 

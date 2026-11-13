@@ -82,6 +82,7 @@ import '../../../auth.dart';
 //   }
 // }
 
+/// @nodoc
 class SharedPreferencesPersistence {
   dynamic _storage;
 

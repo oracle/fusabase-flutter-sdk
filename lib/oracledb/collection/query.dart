@@ -255,7 +255,22 @@ class Query<T extends Object?> {
     return newQuery;
   }
 
-  /// Returns a cloned query with vector search metadata attached.
+  /// Returns a cloned query with vector-search metadata attached.
+  ///
+  /// [vectorSearch] (`Map<String, dynamic>`) describes the field, query
+  /// vector, and optional search settings. Prefer [findNearest] when building
+  /// a vector query directly.
+  ///
+  /// Returns a new [Query<T>] containing the vector-search configuration.
+  ///
+  /// Example:
+  /// ```dart
+  /// final nearest = query.withVectorSearch({
+  ///   'field': 'embedding',
+  ///   'query': FieldValue.denseVector([0.12, -0.4]),
+  ///   'topK': 10,
+  /// });
+  /// ```
   Query<T> withVectorSearch(Map<String, dynamic> vectorSearch) {
     Query<T> newQuery = Query<T>(
       helper: QueryHelper(),
@@ -267,7 +282,24 @@ class Query<T extends Object?> {
     return newQuery;
   }
 
-  /// Creates a v2 vector similarity query.
+  /// Creates a vector similarity query.
+  ///
+  /// - [field] (`String`): Name of the vector field to search.
+  /// - [query] (`Map<String, dynamic>`): Dense or sparse query-vector payload.
+  /// - [metric] (`String?`): Optional similarity metric.
+  /// - [topK] (`int?`): Optional positive maximum number of matches.
+  /// - [threshold] (`num?`): Optional score threshold.
+  ///
+  /// Returns a new [Query<T>] configured for nearest-neighbour search.
+  ///
+  /// Example:
+  /// ```dart
+  /// final nearest = query.findNearest(
+  ///   'embedding',
+  ///   FieldValue.denseVector([0.12, -0.4]),
+  ///   topK: 10,
+  /// );
+  /// ```
   Query<T> findNearest(
     String field,
     Map<String, dynamic> query, {
@@ -347,10 +379,15 @@ class Query<T extends Object?> {
   /// Applies column selection to the query.
   ///
   /// Parameters:
-  /// - values: Array of column names.
+  /// - [values] (`List<String>`): Names of the columns to return.
   ///
   /// Returns:
-  /// A new [Query] with the added filter.
+  /// A new [Query<T>] with the selected columns.
+  ///
+  /// Example:
+  /// ```dart
+  /// final names = query.column(['name', 'email']);
+  /// ```
   ///
   column(List<String> values) {
     Query<T> newQuery = Query<T>(
@@ -897,31 +934,47 @@ class Query<T extends Object?> {
     bool includeMetadataChanges = false,
     ListenSource source = ListenSource.defaultSource,
   }) {
+    if (_joins.isNotEmpty || _aggregate.isNotEmpty || _vectorSearch != null) {
+      throw Utils.oracledbErrorHandler(
+        400,
+        'snapshots does not support joins, aggregates, or vector search queries.',
+        null,
+      );
+    }
     this._rt = 1;
     late StreamController<QuerySnapshot<T>> controller;
     Timer? _pollingTimer;
 
     var auth = FusabaseAuth.instanceFor(app: this._oracledb.app);
     var email = auth.currentUser?.email ?? "";
-    var userLvlPayload = {
-      "path": this._path,
-      "conditions": this._conditions,
-      "explicitOrder": this._explicitOrder,
-      "access_token": email,
-    };
-
     // this query id is used to store in the cache (user level)
-    int queryIdInt = createHashFromJson(userLvlPayload);
+    int queryIdInt = createSnapshotCacheHash(
+      options: this._oracledb.app.options,
+      path: this._path,
+      conditions: this._conditions,
+      explicitOrder: this._explicitOrder,
+      email: email,
+    );
     String queryId = queryIdInt.toString();
 
     var socketPayload = {
       "path": this._path,
       "conditions": this._conditions,
+    };
+
+    // Keep the wire payload minimal, but use the full query identity for the
+    // subscription ID so incoming events route to the correct listener.
+    var subscriptionIdentity = {
+      "type": this.type,
+      "path": this._path,
+      "conditions": this._conditions,
       "explicitOrder": this._explicitOrder,
+      "limit": this._limit,
+      "column": this._column,
     };
 
     // this query id is used to register listener (common for each query)
-    int queryIdSocketInt = createHashFromJson(socketPayload);
+    int queryIdSocketInt = createSnapshotHashFromJson(subscriptionIdentity);
     String queryIdSocket = queryIdSocketInt.toString();
 
     // this query id is used to store the notifiers (unique each time)
@@ -954,11 +1007,8 @@ class Query<T extends Object?> {
       return newSnap as QuerySnapshot<T>;
     }
 
-    bool uselongPolling =
+    final uselongPolling =
         _oracledb.settings.webExperimentalForceLongPolling ?? true;
-    if (_oracledb.settings.webExperimentalForceLongPolling ?? true) {
-      uselongPolling = true;
-    }
 
     //uselongPolling = false;
 
@@ -1127,6 +1177,7 @@ class Query<T extends Object?> {
             return;
           }
           this._oracledb._queryIdMap[queryIdSocket] = queryId;
+          this._oracledb._initialSnapshotReady[queryIdSocket] = false;
           List<String> localQueryIds = this._oracledb._localQueryIdMap
               .putIfAbsent(queryId, () => []);
           if (!localQueryIds.contains(localQueryId)) {
@@ -1138,6 +1189,7 @@ class Query<T extends Object?> {
           dynamic fsnap = await firstPoll();
           if (!isCancelled && !controller.isClosed) {
             controller.add(fsnap);
+            this._oracledb.markInitialSnapshotReady(queryIdSocket);
           }
         },
         onCancel: () {
@@ -1159,6 +1211,9 @@ class Query<T extends Object?> {
               this._oracledb._localQueryIdMap[queryId]!.isEmpty) {
             this._oracledb._localQueryIdMap.remove(queryId);
             this._oracledb._queryIdMap.remove(queryIdSocket);
+            this._oracledb._initialSnapshotReady.remove(queryIdSocket);
+            this._oracledb._initialSnapshotEvents.remove(queryIdSocket);
+            this._oracledb._realtimeEventTails.remove(queryIdSocket);
             dynamic unsubPayload = {
               "queryId": queryIdSocketInt,
               "status": 0,

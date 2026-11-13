@@ -174,6 +174,7 @@ class Transaction {
     return this;
   }
 
+  /// @nodoc
   /// Resets the transaction state.
   void __reset() {
     __name = generateRandomString(25);
@@ -182,6 +183,7 @@ class Transaction {
     __versions = <String, dynamic>{};
   }
 
+  /// @nodoc
   /// Internal method to execute queued operations.
   ///
   /// Returns:
@@ -231,6 +233,7 @@ class Transaction {
     return res;
   }
 
+  /// @nodoc
   /// Internal method to commit the last operation.
   ///
   /// Parameters:

@@ -323,7 +323,7 @@ class ONPREMUserHelper {
     final reqURL =
         "${this.config.domainURL}${ONPREMConfig.UPDATE_PASSWORD_HELPER}?apiKey=${options?.appID}";
     String? idToken = await user.getIdToken();
-    final headers = <String, String>{"X-AUTHZ": idToken ?? ""};
+    final headers = <String, String>{"Authorization": "Bearer ${idToken ?? ""}"};
     final body = json.encode({
       "password": newPassword,
       "oldPassword": oldPassword,
@@ -373,7 +373,9 @@ class ONPREMUserHelper {
     final reqURL =
         "${this.config.domainURL}${ONPREMConfig.UPDATE_PROFILE_HELPER}?apiKey=${options?.appID}";
     String? accessToken = await user.getIdToken();
-    final headers = <String, String>{"X-AUTHZ": accessToken ?? ""};
+    final headers = <String, String>{
+      "Authorization": "Bearer ${accessToken ?? ""}",
+    };
     final body = json.encode({
       "Operations": makeNameOperations(user, displayName),
     });
@@ -427,7 +429,9 @@ class ONPREMUserHelper {
     final reqURL =
         "${this.config.domainURL}${ONPREMConfig.UPDATE_PROFILE_HELPER}?apiKey=${options?.appID}";
     String? accessToken = await user.getIdToken();
-    final headers = <String, String>{"X-AUTHZ": accessToken ?? ""};
+    final headers = <String, String>{
+      "Authorization": "Bearer ${accessToken ?? ""}",
+    };
     final body = json.encode({
       "Operations": makePhoneOperations(user, phoneNumber),
     });

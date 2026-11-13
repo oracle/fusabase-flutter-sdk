@@ -26,6 +26,7 @@
 
 import 'dart:html';
 
+/// @nodoc
 class DBHelper {
   final String name;
   final String storeName;

@@ -28,14 +28,25 @@
 
 part of '../../app_trust.dart';
 
-/// Android App Trust provider options. Native providers are skipped for now.
+/// Available Android attestation-provider selections.
+///
+/// These values are accepted by [FusabaseAppTrust.activate]. Native activation
+/// is currently not performed by this package.
 enum AndroidProvider { playIntegrity, debug, safetyNet }
 
-/// Apple App Trust provider options. Native providers are skipped for now.
+/// Available Apple attestation-provider selections.
+///
+/// These values are accepted by [FusabaseAppTrust.activate]. Native activation
+/// is currently not performed by this package.
 enum AppleProvider { appAttest, deviceCheck }
 
-/// Base type for web App Trust providers.
+/// Contract implemented by web attestation providers.
 abstract class WebProvider {
-  /// Returns an attestation token for the given action.
+  /// Obtains an attestation token for an action.
+  ///
+  /// Parameters:
+  /// - [action] ([String]): Provider action, such as `attest`.
+  ///
+  /// Returns: a [Future<String>] containing the provider token.
   Future<String> getAttestationToken(String action);
 }

@@ -106,45 +106,7 @@ class IDCSAuthHelper {
   }
 
   Future<void> performSignOut(String? refreshToken) async {
-    try {
-      await _delegate.performSignOut(refreshToken ?? "");
-    } finally {
-      await signOutFromIDCS();
-    }
-  }
-
-  Future<void> signOutFromIDCS() async {
-    dynamic response;
-    final reqURL = "${config.idcsDomainURL}${IDCSConfig.LOGOUT_REST_EP}";
-    final headers = <String, String>{"Content-Type": "application/scim+json"};
-
-    try {
-      response = await createClient(
-        _app,
-      ).get(Uri.parse(reqURL), headers: headers);
-      AuthUtils.checkResponse(__logLevel, response);
-    } catch (e, stacktrace) {
-      AuthUtils.baasLogger(__logLevel, "GET request");
-      AuthUtils.baasTrace(__logLevel, reqURL, headers, null, e, stacktrace);
-      String errMessage = response == null ? "Network error" : "Unknown";
-      final int status = response == null ? 408 : response.statusCode;
-      if (response != null) {
-        try {
-          final newMessage = jsonDecode(response.body);
-          errMessage =
-              newMessage["detail"] ??
-              newMessage["error"] ??
-              newMessage["message"] ??
-              errMessage;
-        } catch (_) {}
-      }
-      throw AuthUtils.authErrorHandler(
-        status: status,
-        message: errMessage,
-        authType: config.authType.toUpperCase(),
-        stackTrace: stacktrace,
-      );
-    }
+    await _delegate.performSignOut(refreshToken ?? "");
   }
 
   Future<void> revokeRefreshToken({

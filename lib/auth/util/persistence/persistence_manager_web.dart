@@ -32,6 +32,7 @@ import '../storage/indexed_db_persistence.dart';
 import '../storage/local_storage.dart';
 import '../storage/session_storage.dart';
 
+/// @nodoc
 class PersistenceManager {
   dynamic persistence;
   dynamic lStore;

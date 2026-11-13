@@ -29,6 +29,7 @@ import 'inmemory_storage.dart'
     if (dart.library.html) './indexed_db.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+/// @nodoc
 class StorageManager {
   dynamic db;
 

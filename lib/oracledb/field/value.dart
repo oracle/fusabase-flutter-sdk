@@ -29,7 +29,6 @@ part of '../../oracledb.dart';
 
 /// Represents sentinel values that can be used when writing document fields.
 ///
-///
 /// Use static methods to create instances for operations like arrayUnion, delete, etc.
 class FieldValue {
   final dynamic _value;
@@ -100,7 +99,16 @@ class FieldValue {
     return FieldValue._('FieldValue:delete', null);
   }
 
-  /// Creates a dense vector payload for embedding fields.
+  /// Creates a dense-vector payload for an embedding field.
+  ///
+  /// [values] ([List<dynamic>]) is a non-empty list of numeric dimensions.
+  ///
+  /// Returns a `Map<String, dynamic>` accepted by vector write operations.
+  ///
+  /// Example:
+  /// ```dart
+  /// await doc.update({'embedding': FieldValue.denseVector([0.12, -0.4])});
+  /// ```
   static Map<String, dynamic> denseVector(List<dynamic> values) {
     validateDenseVector(
       values,
@@ -109,7 +117,20 @@ class FieldValue {
     return {'type': 'dense', 'values': List<dynamic>.from(values)};
   }
 
-  /// Creates a sparse vector payload for embedding fields.
+  /// Creates a sparse-vector payload for an embedding field.
+  ///
+  /// - [dimension] (`int`): Total number of dimensions; must be positive.
+  /// - [indices] (`List<dynamic>`): Sorted dimension indices.
+  /// - [values] (`List<dynamic>`): Numeric values corresponding to [indices].
+  ///
+  /// Returns a `Map<String, dynamic>` accepted by vector write operations.
+  ///
+  /// Example:
+  /// ```dart
+  /// await doc.update({
+  ///   'embedding': FieldValue.sparseVector(8, [1, 5], [0.25, -0.75]),
+  /// });
+  /// ```
   static Map<String, dynamic> sparseVector(
     int dimension,
     List<dynamic> indices,
@@ -125,7 +146,14 @@ class FieldValue {
     return sparse;
   }
 
-  /// Creates a FieldValue for deleting an embedding entry from `$embeddings`.
+  /// Creates a sentinel that removes an embedding entry from the document.
+  ///
+  /// Returns a [FieldValue] used by [DocumentReference.update].
+  ///
+  /// Example:
+  /// ```dart
+  /// await doc.update({'embedding': FieldValue.deleteVector()});
+  /// ```
   static FieldValue deleteVector() {
     return FieldValue._('FieldValue:deleteVector', null);
   }

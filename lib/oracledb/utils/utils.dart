@@ -141,7 +141,7 @@ void validateVectorSearchQuery(Map<String, dynamic> query) {
 
 /// @nodoc
 bool checkOracledbApiVersion(FusabaseOptions options, int version) {
-  return options.useOracledbVersion == version;
+  return version == (OracledbVersion["VERSION_2"] ?? 2);
 }
 
 /// @nodoc
@@ -230,6 +230,40 @@ String generateRandomString(int len) {
 int createHashFromJson(Map<String, dynamic> jsonObject) {
   var jsonString = jsonEncode(jsonObject);
   return jsonString.hashCode;
+}
+
+/// @nodoc
+int createSnapshotCacheHash({
+  required FusabaseOptions options,
+  required List<String> path,
+  required List<dynamic> conditions,
+  required List<dynamic> explicitOrder,
+  required String email,
+}) {
+  return createHashFromJson({
+    'app_id': options.appID,
+    'project_id': options.projectID,
+    'path': path,
+    'conditions': conditions,
+    'explicitOrder': explicitOrder,
+    'access_token': email,
+  });
+}
+
+/// Creates the stable 32-bit hash used for realtime subscription IDs.
+///
+/// This matches the JavaScript SDK's `snapHashcode`, allowing both SDKs to
+/// route server messages that use the same query identity.
+int createSnapshotHashFromJson(Map<String, dynamic> jsonObject) {
+  final jsonString = jsonEncode(jsonObject);
+  var hash = 0;
+  for (final codeUnit in jsonString.codeUnits) {
+    hash = ((hash << 5) - hash + codeUnit) & 0xFFFFFFFF;
+    if (hash >= 0x80000000) {
+      hash -= 0x100000000;
+    }
+  }
+  return hash.abs();
 }
 
 /// @nodoc

@@ -66,6 +66,51 @@ Future<http.Response> fetchWithRetry(
   return await fetchWithExponentialBackoff();
 }
 
+/// Performs a GET request without buffering the response body.
+///
+/// Callers must consume [http.StreamedResponse.stream] directly. This is used
+/// for file downloads so large objects are written incrementally instead of
+/// being retained as one in-memory byte array.
+/// @nodoc
+Future<http.StreamedResponse> fetchStreamWithRetry(
+  http.Client client,
+  String url, {
+  Map<String, String>? headers,
+  int maxRetryTime = 10000,
+}) async {
+  final start = DateTime.now();
+  int delay = 200;
+
+  while (true) {
+    try {
+      final request = http.Request('GET', Uri.parse(url));
+      if (headers != null) {
+        request.headers.addAll(headers);
+      }
+
+      final response = await client.send(request);
+      if (response.statusCode == 200) {
+        return response;
+      }
+
+      // Release the connection before retrying without collecting the body.
+      await response.stream.drain<void>();
+      throw Exception(
+        StorageErrorMessages.format(StorageErrorMessages.EXPECTED_TYPE, [
+          '200',
+          response.statusCode.toString(),
+        ]),
+      );
+    } catch (_) {
+      if (DateTime.now().difference(start).inMilliseconds > maxRetryTime) {
+        rethrow;
+      }
+      await Future.delayed(Duration(milliseconds: delay));
+      delay = (delay * 2).clamp(200, 2000).toInt();
+    }
+  }
+}
+
 /// @nodoc
 Future<http.Response> deleteWithRetry(
   http.Client client,

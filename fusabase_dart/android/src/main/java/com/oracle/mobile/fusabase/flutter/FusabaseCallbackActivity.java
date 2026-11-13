@@ -40,7 +40,11 @@ public class FusabaseCallbackActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Intent intent = getIntent();
-        Uri url = intent.getData();
+        Uri url = intent == null ? null : intent.getData();
+        if (url == null) {
+            finish();
+            return;
+        }
         String scheme = url.getScheme();
         if (scheme != null) {
             Result temp = FusabaseDartPlugin.callbacks.get(scheme);

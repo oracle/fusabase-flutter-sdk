@@ -224,7 +224,12 @@ class WebExperimentalLongPollingOptions {
 ///
 /// Example:
 /// ```dart
-/// var settings = Settings(persistenceEnabled: true);
+/// db.settings = db.settings.copyWith(
+///   webExperimentalForceLongPolling: true,
+///   webExperimentalLongPollingOptions: const WebExperimentalLongPollingOptions(
+///     timeoutDuration: Duration(seconds: 15),
+///   ),
+/// );
 /// ```
 class Settings {
   final bool? webExperimentalAutoDetectLongPolling;
