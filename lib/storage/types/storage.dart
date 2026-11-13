@@ -26,16 +26,16 @@
 
 part of "../../storage.dart";
 
-/// Configuration options for the FUSABASE Storage service.
+/// Configuration values used by the storage service.
 ///
 /// This class holds the necessary configuration parameters
 ///
 /// Parameters:
-/// - [host]: The host URL for the storage service.
-/// - [schema]: The schema to use.
-/// - [projectID]: The project ID (required).
-/// - [module]: The module name.
-/// - [appID]: The application ID.
+/// - [host] (`String?`): Host URL for the storage service.
+/// - [schema] (`String?`): Schema name.
+/// - [projectID] (`String`): Project identifier.
+/// - [module] (`String?`): Storage module name.
+/// - [appID] (`String?`): Application identifier.
 ///
 /// Returns: An instance of [FusabaseStorageConfig].
 ///
@@ -75,7 +75,7 @@ class _StorageReferenceUrlParts {
   });
 }
 
-/// The main entry point for accessing an FUSABASE Storage bucket.
+/// The main entry point for accessing a storage bucket.
 ///
 /// This class provides methods to interact with storage. It allows creating references, setting retry times, etc.
 class FusabaseStorage {
@@ -95,7 +95,7 @@ class FusabaseStorage {
   /// Creates or retrieves a storage instance for the given app.
   ///
   /// Parameters:
-  /// - [app]: The FUSABASE app instance.
+  /// - [app] ([FusabaseApp]): Application that owns the storage instance.
   ///
   /// Returns: An [FusabaseStorage] instance.
   ///
@@ -123,11 +123,13 @@ class FusabaseStorage {
   /// Constructs a new [FusabaseStorage] instance.
   ///
   /// Parameters:
-  /// - [app]: The associated FUSABASE app (required).
-  /// - [bucket]: Optional bucket name; defaults to app's storageBucket.
-  /// - [maxDownloadRetryTime]: Maximum retry time for downloads.
-  /// - [maxOperationRetryTime]: Maximum retry time for operations.
-  /// - [maxUploadRetryTime]: Maximum retry time for uploads.
+  /// - [app] ([FusabaseApp]): Associated application.
+  /// - [bucket] (`String?`): Optional bucket name. The configured bucket is
+  ///   used when this is omitted.
+  /// - [maxDownloadRetryTime] ([Duration?]): Maximum retry time for downloads.
+  /// - [maxOperationRetryTime] ([Duration?]): Maximum retry time for other
+  ///   operations.
+  /// - [maxUploadRetryTime] ([Duration?]): Maximum retry time for uploads.
   ///
   /// Returns: A new [FusabaseStorage] instance.
   ///
@@ -353,8 +355,14 @@ class FusabaseStorage {
 
   /// Sets the maximum time to retry operations other than uploads or downloads.
   ///
-  /// Parameters:
-  /// - [time]: The new maximum retry time.
+  /// [time] ([Duration]) is the non-negative retry interval to use.
+  ///
+  /// Returns `void` after updating the retry limit.
+  ///
+  /// Example:
+  /// ```dart
+  /// storage.setMaxOperationRetryTime(const Duration(seconds: 20));
+  /// ```
   void setMaxOperationRetryTime(Duration time) {
     assert(!time.isNegative);
     _maxOperationRetryTime = time.inMilliseconds;
@@ -380,8 +388,14 @@ class FusabaseStorage {
 
   /// Sets the maximum time to retry upload operations.
   ///
-  /// Parameters:
-  /// - [time]: The new maximum upload retry time.
+  /// [time] ([Duration]) is the non-negative retry interval to use.
+  ///
+  /// Returns `void` after updating the retry limit.
+  ///
+  /// Example:
+  /// ```dart
+  /// storage.setMaxUploadRetryTime(const Duration(seconds: 30));
+  /// ```
   void setMaxUploadRetryTime(Duration time) {
     assert(!time.isNegative);
     _maxUploadRetryTime = time.inMilliseconds;
@@ -396,8 +410,14 @@ class FusabaseStorage {
 
   /// Sets the maximum time to retry download operations.
   ///
-  /// Parameters:
-  /// - [time]: The new maximum download retry time.
+  /// [time] ([Duration]) is the non-negative retry interval to use.
+  ///
+  /// Returns `void` after updating the retry limit.
+  ///
+  /// Example:
+  /// ```dart
+  /// storage.setMaxDownloadRetryTime(const Duration(seconds: 30));
+  /// ```
   void setMaxDownloadRetryTime(Duration time) {
     assert(!time.isNegative);
     _maxDownloadRetryTime = time.inMilliseconds;

@@ -41,11 +41,21 @@ import 'fusabase_web_platform_interface.dart';
 
 /// A web implementation of the FusabaseWebPlatform of the FusabaseWeb plugin.
 class FusabaseWebWeb extends FusabaseWebPlatform {
+  static int _popupCounter = 0;
+
   /// Constructs a FusabaseWebWeb
   FusabaseWebWeb();
 
   static void registerWith(Registrar registrar) {
     FusabaseWebPlatform.instance = FusabaseWebWeb();
+  }
+
+  static String _nextPopupName() {
+    final bytes = Uint8List(16);
+    html.window.crypto?.getRandomValues(bytes);
+    _popupCounter += 1;
+    return 'fusabase_auth_popup_${DateTime.now().microsecondsSinceEpoch}_'
+        '${_popupCounter}_${_base64UrlEncode(bytes)}';
   }
 
   Future<String> listenForToken(WindowBase popup, String expectedOrigin) async {
@@ -72,7 +82,11 @@ class FusabaseWebWeb extends FusabaseWebPlatform {
     required String url,
     required String callbackUrlScheme,
   }) async {
-    WindowBase popup = html.window.open("", "name", "width=800,height=600");
+    WindowBase popup = html.window.open(
+      "",
+      _nextPopupName(),
+      "width=800,height=600",
+    );
     popup.location.href = url;
     var data = await listenForToken(popup, Uri.parse(url).origin);
     popup.close();

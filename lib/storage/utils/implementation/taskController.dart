@@ -531,7 +531,8 @@ class DownloadTaskController {
     required DownloadTask task,
     required FusabaseStorageConfig config,
   }) async {
-    dynamic response;
+    http.StreamedResponse? response;
+    dynamic sink;
 
     String url = await ref.getDownloadURL();
     String final_url = url;
@@ -542,29 +543,26 @@ class DownloadTaskController {
     // }
     final headers = <String, String>{};
     try {
-      response = await fetchWithRetry(
+      response = await fetchStreamWithRetry(
         _client,
         final_url,
         headers: headers,
         maxRetryTime: retryTime,
       );
-      Utils.checkResponse(this.__logLevel, response);
-      await data.writeAsBytes(response.bodyBytes);
+      sink = data.openWrite();
+      await for (final List<int> chunk in response.stream) {
+        sink.add(chunk);
+      }
+      await sink.close();
+      sink = null;
     } catch (e, stacktrace) {
+      await sink?.close();
       await task.__makeStateChange(TaskState.error);
       Utils.baasLogger(this.__logLevel, "GET request");
       Utils.baasTrace(this.__logLevel, final_url, headers, null, e, stacktrace);
-      String errMessage = "";
-      try {
-        errMessage =
-            StorageHelper.isPrem(config)
-                ? jsonDecode(response.body)["error"]
-                : jsonDecode(response.body)["message"];
-      } catch (jsonErr) {
-        errMessage = StorageErrorMessages.UNKNOWN;
-      }
+      final errMessage = response?.reasonPhrase ?? StorageErrorMessages.UNKNOWN;
       throw Utils.storageErrorHandler(
-        response.statusCode,
+        response?.statusCode ?? 500,
         errMessage,
         stacktrace,
       );

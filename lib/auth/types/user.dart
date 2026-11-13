@@ -27,7 +27,14 @@
 part of "../../auth.dart";
 
 /// {@template persistence}
-/// Types of persistence for auth state.
+/// Storage modes for authentication state.
+///
+/// Use a value with [FusabaseAuth.setPersistence] on web platforms.
+///
+/// Example:
+/// ```dart
+/// await FusabaseAuth.instance.setPersistence(Persistence.SESSION);
+/// ```
 /// {@endtemplate}
 enum Persistence {
   /// Local persistence.
@@ -449,10 +456,10 @@ class User {
   /// ```
   Future<String?> getIdToken([bool forceRefresh = false]) async {
     IdTokenResult? laccessToken = await _auth.__getIdTokenResult(
-      _auth.app.options.appID + globals.accessTokenKey,
+      _auth._persistenceKey(globals.accessTokenKey),
     );
     String? lrefreshToken = await _auth.__getToken(
-      _auth.app.options.appID + globals.refreshTokenKey,
+      _auth._persistenceKey(globals.refreshTokenKey),
     );
     if (forceRefresh || !_userHelper.vaidateAccessToken(laccessToken)) {
       dynamic tok = await _userHelper.refreshAccessToken(
@@ -647,7 +654,8 @@ class User {
 
   /// Sends email verification.
   ///
-  /// [actionCodeSettings] Optional settings.
+  /// [actionCodeSettings] Optional [ActionCodeSettings]. This parameter is
+  /// accepted for compatibility; the current service request does not use it.
   ///
   /// Returns a [Future] that completes when sent.
   ///
@@ -734,15 +742,15 @@ class User {
     //   await _auth.__setToken(_auth.app.options.appID + globals.codeKey, res["code"]);
     // }
     await _auth.__setToken(
-      _auth.app.options.appID + globals.loginKey,
+      _auth._persistenceKey(globals.loginKey),
       globals.redirectKey,
     );
     await _auth.__setToken(
-      _auth.app.options.appID + globals.providerKey,
+      _auth._persistenceKey(globals.providerKey),
       provider.providerId,
     );
     await _auth.__setToken(
-      _auth.app.options.appID + globals.codeVerifierKey,
+      _auth._persistenceKey(globals.codeVerifierKey),
       res["codeVerifier"],
     );
     await _userHelper.linkWithRedirectHelper(provider, res);

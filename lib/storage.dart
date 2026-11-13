@@ -24,11 +24,20 @@
 //
 //-----------------------------------------------------------------------------
 
-/// The main entry file for the FUSABASE Storage library.
+/// Object storage APIs for the Oracle Backend Flutter SDK.
+///
+/// Use [FusabaseStorage.instance] to create a [Reference] for an object and
+/// then upload, download, list, or manage that object.
+///
+/// Example:
+/// ```dart
+/// final reference = FusabaseStorage.instance.ref('images/avatar.png');
+/// final task = reference.putData(bytes);
+/// await task;
+/// ```
 /// {@category fusabase-storage}
 ///
 
-/// This file imports necessary dependencies and parts in the implementation files
 library fusabase.storage;
 
 import 'dart:io';

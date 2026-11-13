@@ -461,11 +461,8 @@ class DocumentReference<T extends Object?> {
     var lastDocUpdate = null;
     Timer? _pollingTimer;
 
-    bool uselongPolling =
+    final uselongPolling =
         _oracledb.settings.webExperimentalForceLongPolling ?? true;
-    if (_oracledb.settings.webExperimentalForceLongPolling ?? true) {
-      uselongPolling = true;
-    }
 
     //uselongPolling = false;
 
@@ -511,25 +508,23 @@ class DocumentReference<T extends Object?> {
       bool hasRegisteredRealtimeListener = false;
       FusabaseAuth auth = FusabaseAuth.instanceFor(app: _oracledb.app);
       var email = auth.currentUser?.email ?? "";
-      var userLvlPayload = {
-        "path": this._path,
-        "conditions": [],
-        "explicitOrder": [],
-        "access_token": email,
-      };
-
       // this query id is used to store in the cache (user level)
-      int queryIdInt = createHashFromJson(userLvlPayload);
+      int queryIdInt = createSnapshotCacheHash(
+        options: _oracledb.app.options,
+        path: this._path,
+        conditions: const [],
+        explicitOrder: const [],
+        email: email,
+      );
       String queryId = queryIdInt.toString();
 
       var socketPayload = {
         "path": this._path,
         "conditions": [],
-        "explicitOrder": [],
       };
 
       // this query id is used to register listener (common for each query)
-      int queryIdSocketInt = createHashFromJson(socketPayload);
+      int queryIdSocketInt = createSnapshotHashFromJson(socketPayload);
       String queryIdSocket = queryIdSocketInt.toString();
 
       // this query id is used to store the notifiers (unique each time)
@@ -579,6 +574,7 @@ class DocumentReference<T extends Object?> {
             return;
           }
           _oracledb._queryIdMap[queryIdSocket] = queryId;
+          _oracledb._initialSnapshotReady[queryIdSocket] = false;
           List<String> localQueryIds = _oracledb._localQueryIdMap.putIfAbsent(
             queryId,
             () => [],
@@ -592,6 +588,7 @@ class DocumentReference<T extends Object?> {
           dynamic fsnap = await firstPoll();
           if (!isCancelled && !controller.isClosed) {
             controller.add(fsnap);
+            _oracledb.markInitialSnapshotReady(queryIdSocket);
           }
         },
         onCancel: () {
@@ -611,6 +608,9 @@ class DocumentReference<T extends Object?> {
               _oracledb._localQueryIdMap[queryId]!.isEmpty) {
             _oracledb._localQueryIdMap.remove(queryId);
             _oracledb._queryIdMap.remove(queryIdSocket);
+            _oracledb._initialSnapshotReady.remove(queryIdSocket);
+            _oracledb._initialSnapshotEvents.remove(queryIdSocket);
+            _oracledb._realtimeEventTails.remove(queryIdSocket);
             dynamic unsubPayload = {
               "queryId": queryIdSocketInt,
               "status": 0,

@@ -29,6 +29,7 @@ import 'dart:html';
 
 import "../../../auth.dart";
 
+/// @nodoc
 class IndexedDBPersistence {
   dynamic db;
 

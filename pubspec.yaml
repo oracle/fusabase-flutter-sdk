@@ -1,6 +1,6 @@
 name: fusabase
 description: A new Flutter package project.
-version: 26.2.0
+version: 26.3.1
 repository: https://github.com/oracle/fusabase-flutter-sdk.git
 publish_to: 'none'
 
@@ -19,6 +19,9 @@ dependencies:
     path: ./fusabase_dart
   sqflite: 2.3.3+1
   web: 1.0.0
+  collection: 1.19.1
+  path: 1.9.1
+  js: 0.7.2
   
 workspace:
   - fusabase_dart
@@ -29,7 +32,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: 5.0.0
   mockito: 5.4.4
-  # dartdoc: ^8.0.0
+  #dartdoc: ^8.0.0
   
 
 # For information on the generic Dart part of this file, see the

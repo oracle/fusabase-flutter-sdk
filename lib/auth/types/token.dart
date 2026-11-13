@@ -80,8 +80,13 @@ class IdTokenResult {
   }
 
   @override
-  /// Returns a string representation of the token result.
+  /// Returns a non-sensitive summary of the token result.
+  ///
+  /// The raw token and claims are intentionally excluded to prevent accidental
+  /// disclosure through diagnostics or application logs.
   String toString() {
-    return '$IdTokenResult(authTime: $authTime, claims: $claims, expirationTime: $expirationTime, issuedAtTime: $issuedAtTime, signInProvider: $signInProvider, token: $token)';
+    return '$IdTokenResult(authTime: $authTime, '
+        'expirationTime: $expirationTime, issuedAtTime: $issuedAtTime, '
+        'signInProvider: $signInProvider)';
   }
 }

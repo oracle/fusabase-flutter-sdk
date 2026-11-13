@@ -29,23 +29,28 @@ import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
+/// @nodoc
 class DBHelper {
-  static Database? _database;
-  String name;
-  String storeName;
+  Database? _database;
+  final String name;
+  final String storeName;
 
   DBHelper({required this.name, required this.storeName});
 
-  // Initialize and open the database
+  Future<String> _databasePath() async {
+    return join(await getDatabasesPath(), "${name}_${storeName}.db");
+  }
+
+  // Initialize and open the database.
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await _initDatabase();
     return _database!;
   }
 
-  // Create the database
+  // Create the database.
   Future<Database> _initDatabase() async {
-    final String path = join(await getDatabasesPath(), "${name}_${storeName}.db");
+    final String path = await _databasePath();
     return await openDatabase(
       path,
       version: 1,
@@ -112,9 +117,10 @@ class DBHelper {
     );
   }
 
-  // Delete the entire database
+  // Delete the exact database file opened by this helper.
   Future<void> deleteDatabase() async {
-    final String path = join(await getDatabasesPath(), "${name}_onSnapshot.db");
+    final String path = await _databasePath();
+    await _database?.close();
     await databaseFactory.deleteDatabase(path);
     _database = null;
   }

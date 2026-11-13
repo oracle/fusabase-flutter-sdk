@@ -24,14 +24,28 @@
 //
 //-----------------------------------------------------------------------------
 
-/// The core module for Fusabase, providing app initialization and management.
-/// {@category core}
-///
 /// {@template fusabase.core}
-/// The core module for Fusabase, providing app initialization and management.
+/// Initializes and manages named application instances.
 ///
-/// This library includes classes and functions for creating and handling Fusabase app instances
+/// Use [Fusabase.initializeApp] once before accessing other service modules.
+///
+/// Example:
+/// ```dart
+/// final app = Fusabase.initializeApp(
+///   options: FusabaseOptions({
+///     'ords_host': 'https://example.com',
+///     'app_id': 'my-app-id',
+///     'project_id': 'my-project',
+///     'schema': 'my_schema',
+///     'objs_type': 'oci-objs',
+///     'backend_type': 'COLLECTION',
+///     'storage_bucket': 'my-bucket',
+///     'auth_type': 'idcs',
+///   }),
+/// );
+/// ```
 /// {@endtemplate}
+/// {@category core}
 
 library fusabase.core;
 

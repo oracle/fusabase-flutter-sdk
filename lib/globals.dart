@@ -24,6 +24,7 @@
 //
 //-----------------------------------------------------------------------------
 
+/// @nodoc
 library fusabase.globals;
 
 const addRESTEP = "setDocument";
@@ -41,6 +42,7 @@ const getMetaData = 'getmetadata';
 const defaultAppName = "OracleDefaultApp";
 const accessTokenKey = 'accessToken';
 const refreshTokenKey = 'refreshToken';
+const idTokenHintKey = 'idTokenHint';
 const codeKey = 'redirectCode';
 const codeVerifierKey = 'redirectCodeVerifier';
 const providerKey = 'redirectProvider';

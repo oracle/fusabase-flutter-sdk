@@ -1,6 +1,15 @@
-# Oracle® Backend with Firebase APIs (Fusabase) Flutter SDK
+<br />
+<p align="center">
+  <img src="assets/fusabase-color.svg" alt="Fusabase logo" width="180" />
+</p>
 
-A Flutter SDK for Oracle Backend with Firebase APIs (Fusabase) that provides authentication, document database, storage, App Trust, and vector search capabilities, backed entirely by Oracle AI Database via ORDS. 
+<h1 align="center">Fusabase Flutter SDK</h1>
+
+<p align="center">
+  <a href="https://docs.oracle.com/en/database/oracle/backend-for-firebase/26.1/index.html">Guides</a>
+</p>
+
+A Flutter SDK for Oracle Backend with Firebase APIs (Fusabase) that provides authentication, document database, storage, App Trust, and vector search capabilities, backed entirely by Oracle AI Database via ORDS.
 
 This Oracle Backend with Firebase APIs Flutter SDK follows the Firebase design, API patterns, and rules-based authorization model. Its SDK interfaces are designed to mirror the Firebase SDK interfaces so developers can move across backends with minimal changes. This Oracle Backend with Firebase APIs Flutter SDK is a distinct Oracle offering.
 
@@ -40,6 +49,7 @@ The package is published from `oracle/fusabase-flutter-sdk` as a git dependency 
          'app_id': 'your-app-id',
          'project_id': 'your-project-id',
          'objs_type': 'dbfs',
+         'backend_type': 'COLLECTION',
          'storage_bucket': 'your-bucket',
          'auth_type': 'base',
          'auth_id': 'your-auth-id',
@@ -48,6 +58,32 @@ The package is published from `oracle/fusabase-flutter-sdk` as a git dependency 
      runApp(MyApp());
    }
    ```
+
+### Initialization options
+
+Pass a `FusabaseOptions` map to `Fusabase.initializeApp`. These are the
+supported keys:
+
+`initializeApp` also accepts an optional `name` (`String`) for the application
+instance. When omitted, it uses `OracleDefaultApp`.
+
+| Key | Type | Required | Description |
+| --- | --- | --- | --- |
+| `ords_host` | `String` | Yes | Base ORDS URL, including any required path prefix. |
+| `schema` | `String` | Yes | Database schema name. |
+| `app_id` | `String` | Yes | Application identifier. |
+| `project_id` | `String` | Yes | Project identifier used by service endpoints. |
+| `objs_type` | `String` | Yes | Object storage type. Use `dbfs` for DBFS; any other value selects `oci-objs`. |
+| `backend_type` | `String` | Yes | Backend data model. Use `COLLECTION`. `RELATIONAL` is rejected during initialization. |
+| `storage_bucket` | `String` | Yes | Default object storage bucket. |
+| `auth_type` | `String` | Yes | Authentication mode, such as `base`, `ldap`, or `idcs`. `e-idcs` is normalized to `idcs`. |
+| `auth_id` | `String?` | No | Optional authentication-service identifier. |
+| `app_type` | `String` | No | Application type. Defaults to `web`. |
+| `app_name` | `String?` | No | Optional application-display name. |
+| `use_socket` | `bool` | No | Enables WebSocket transport for realtime listeners. Defaults to `true`. |
+| `long_polling_interval` | `int` | No | Long-polling interval in whole seconds. Values outside 5–300 use the default of 29 seconds. |
+| `upload_chunk_size` | `int` | No | Upload chunk size in bytes. Defaults to 16 MiB. |
+| `max_upload_size` | `int` | No | Maximum upload size in bytes. Defaults to 100 MiB. `upload_max_size` and `maxUploadSize` are also accepted. |
 
 ## Dependencies
 
@@ -72,23 +108,23 @@ final auth = FusabaseAuth.instance;
 
 // Sign up
 final created = await auth.createUserWithEmailAndPassword(
-  'user@example.com',
-  'password123!',
+  email: 'user@example.com',
+  password: 'password123!',
 );
 
 // Sign in
 try {
   final credential = await auth.signInWithEmailAndPassword(
-    'user@example.com',
-    'password123!',
+    email: 'user@example.com',
+    password: 'password123!',
   );
-  print('Signed in: ${credential.user.uid}');
+  print('Signed in: ${credential.user?.uid}');
 } catch (e) {
   print('Sign in failed: $e');
 }
 
 // Auth state
-auth.authStateChanges.listen((user) {
+auth.authStateChanges().listen((user) {
   if (user != null) {
     print('User signed in: ${user.uid}');
   } else {
@@ -131,6 +167,25 @@ for (final doc in querySnapshot.docs) {
 }
 ```
 
+### Realtime database updates
+
+Use `snapshots()` to receive the initial result and later changes. Cancel the
+subscription when the listener is no longer needed.
+
+```dart
+final subscription = db.collection('posts')
+    .where('published', isEqualTo: true)
+    .orderBy('createdAt', descending: true)
+    .snapshots()
+    .listen((snapshot) {
+  for (final change in snapshot.docChanges) {
+    print('${change.type}: ${change.doc.id}');
+  }
+});
+
+await subscription.cancel();
+```
+
 ### Vector Search
 
 Fusabase supports similarity search over dense and sparse embeddings via `Query.findNearest`. Use `FieldValue.denseVector` / `FieldValue.sparseVector` to build payloads.
@@ -141,7 +196,7 @@ import 'package:fusabase/oracledb.dart';
 // Dense vector similarity search
 final denseQuery = db.collection('documents').findNearest(
   'embedding',
-  {'vector': [0.22, 0.93, -0.10]},
+  FieldValue.denseVector([0.22, 0.93, -0.10]),
   metric: 'COSINE',
   topK: 10,
 );
@@ -150,13 +205,11 @@ final denseSnap = await denseQuery.get();
 // Sparse vector similarity search
 final sparseQuery = db.collection('documents').findNearest(
   'embedding',
-  {
-    'sparse': FieldValue.sparseVector(
-      /* dimension */ 1000,
-      /* indices   */ [2, 7, 900],
-      /* values    */ [0.9, 0.3, 0.5],
-    ),
-  },
+  FieldValue.sparseVector(
+    /* dimension */ 1000,
+    /* indices   */ [2, 7, 900],
+    /* values    */ [0.9, 0.3, 0.5],
+  ),
   metric: 'DOT',
   topK: 5,
 );
@@ -183,7 +236,7 @@ final downloadURL = await storageRef.getDownloadURL();
 final meta = await storageRef.getMetadata();
 
 // List
-final listResult = await storage.ref().child('uploads/').listAll();
+final listResult = await storage.ref('uploads').listAll();
 for (final ref in listResult.items) {
   print('File: ${ref.name}');
 }
@@ -272,7 +325,7 @@ flutter test
 
 ## Trademarks
 
-Firebase is a trademark of Google LLC.  Use of the Firebase name here is solely to describe the design patterns and SDK interfaces that Oracle Backend with Firebase APIs follows for developer familiarity and ease of migration; it does not imply any affiliation with or endorsement by Google.
+Firebase is a trademark of Google LLC. Use of the Firebase name here is solely to describe the design patterns and SDK interfaces that Oracle Backend with Firebase APIs follows for developer familiarity and ease of migration; it does not imply any affiliation with or endorsement by Google.
 
 ## Contributing
 
